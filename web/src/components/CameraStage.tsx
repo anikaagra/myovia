@@ -7,7 +7,11 @@ import { StandCounter, type Point } from '../lib/repCounter';
 import { startSensors } from '../lib/deviceSensors';
 import { say, stopSpeaking } from '../lib/speech';
 
-export type Capture = { stands: number; confidence: number; durationSec: number; armsFlags?: number };
+export type Capture = {
+  stands: number; confidence: number; durationSec: number; armsFlags?: number;
+  /** Seconds from the start at which each stand was counted, and hip height (0 seated, ~1 standing) over time. */
+  repTimes?: number[]; series?: [number, number][];
+};
 type Phase = 'starting' | 'error' | 'checking' | 'countdown' | 'recording' | 'rejected';
 
 const DURATION_MS = 30_000;
@@ -77,8 +81,8 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
       const v = videoRef.current!, el = boxRef.current!;
       const cw = el.clientWidth, ch = el.clientHeight, vw = v.videoWidth || 640, vh = v.videoHeight || 480;
       const s = Math.max(cw / vw, ch / vh);
-      // The preview is mirrored like a selfie, so flip x.
-      return { x: cw - (p.x * vw * s + (cw - vw * s) / 2), y: p.y * vh * s + (ch - vh * s) / 2 };
+      // Both the video and this overlay are mirrored by CSS (selfie view), so draw in unmirrored video coordinates.
+      return { x: p.x * vw * s + (cw - vw * s) / 2, y: p.y * vh * s + (ch - vh * s) / 2 };
     };
     const drawBones = (marks: Point[] | null) => {
       if (!marks || !boxRef.current || !videoRef.current) { setBones([]); return; }
@@ -115,7 +119,10 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
           'Keep your arms crossed the whole time. Let’s try again.');
       }
       say(`Done. ${stands} stands.`, { force: true });
-      onDone({ stands, confidence, durationSec: 30, armsFlags: counter.armsFlags });
+      const t0 = endAt - DURATION_MS;
+      const sec = (t: number) => Math.round(((t - t0) / 1000) * 10) / 10;
+      onDone({ stands, confidence, durationSec: 30, armsFlags: counter.armsFlags,
+        repTimes: counter.repTimes.map(sec), series: counter.series.filter(([t]) => t >= t0).map(([t, h]) => [sec(t), h] as [number, number]) });
     };
 
     const tick = () => {

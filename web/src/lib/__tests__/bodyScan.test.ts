@@ -96,3 +96,28 @@ describe('parseBodyCompExport', () => {
     expect(parseCsv('a,b\n"1,5",2')[1]).toEqual(['1,5', '2']);
   });
 });
+
+import { cunBae, combineEstimate, median } from '../bodyScan/estimate';
+describe('scan estimate safeguards', () => {
+  it('CUN-BAE gives typical values', () => {
+    expect(cunBae(62, 'female', 32)).toBeGreaterThan(40);
+    expect(cunBae(62, 'female', 32)).toBeLessThan(50);
+    expect(cunBae(40, 'male', 25)).toBeGreaterThan(20);
+    expect(cunBae(40, 'male', 25)).toBeLessThan(28);
+  });
+  it('blends the photo with the formula and shows a range', () => {
+    const e = combineEstimate({ photoPct: 44, age: 62, sex: 'female', heightIn: 64, weightLb: 190 });
+    expect(e.low).toBeLessThan(e.bodyFatPct);
+    expect(e.high).toBeGreaterThan(e.bodyFatPct);
+    expect(e.leanLow).toBeLessThan(e.leanMassLb);
+    expect(e.warning).toBeNull();
+  });
+  it('asks for a retake when a photo is wildly off', () => {
+    expect(combineEstimate({ photoPct: 15, age: 62, sex: 'female', heightIn: 64, weightLb: 190 }).warning).toMatch(/Try the photos again/);
+  });
+  it('asks for a retake after an impossible change since last scan', () => {
+    const e = combineEstimate({ photoPct: 44, age: 62, sex: 'female', heightIn: 64, weightLb: 190, previous: { bodyFatPct: 35, daysAgo: 28 } });
+    expect(e.warning).toMatch(/bigger change/);
+  });
+  it('median', () => { expect(median([3, 1, 2])).toBe(2); expect(median([1, 2, 3, 10])).toBe(2.5); });
+});

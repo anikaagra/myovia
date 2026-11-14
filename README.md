@@ -14,7 +14,7 @@ Rise turns these into **Steady**, **Watch** or **Check in**, gives the patient o
 
 **Phone demo (no server needed):** open **https://anikaagra.github.io/startup/** in Safari, then Share › **Add to Home Screen**. It opens full screen like an app, with the real camera and on-device pose tracking. Data stays on the phone.
 
-- Patient: *Set up my first check*, care-team code **DEMO42**.
+- Patient: *Set up my first check*, care-team code **DEMO42**, or tap **Example patient** in the demo bar to open Linda's app with two months of history.
 - Care team: *I'm on a care team* › *Use demo sign-in* (`nurse@demo.rise` / `rise-demo-2026`).
 - AI in the phone demo: care-team Settings › paste an Anthropic key. It is stored only on that phone and sent straight to Anthropic. Use the full server (below) for anything beyond a personal demo.
 - Add `?debug=1` to the check URL to see live camera numbers (sharpness, haze, light, tilt) while tuning.
@@ -35,8 +35,11 @@ The demo republishes automatically on every push to `main` (GitHub Actions › *
   - *Phone:* upright (tilt from the motion sensors, ±15°), not tipped sideways, not shaking.
   - Recording starts by itself after 2 seconds of all-green, with a live skeleton overlay.
 - **Stand counting:** MediaPipe pose on the phone. A stand counts when the hip rises from its seated height by about a thigh length *and* the knee straightens, with hysteresis and a 0.7 s minimum between stands. CDC STEADI rules: a stand more than halfway up at 30 s counts; uncrossed arms are flagged and the capture redone; lost tracking (under 75% of frames, or a gap over 2.5 s) is rejected with a fix.
+- **Count review:** after the 30 seconds, the patient sees the count over a replay of their hip path with a dot for every stand, confirms it, fixes it or redoes the check. Rise flags counts that are probably wrong (stands counted too close together, a long pause mid-test, a jump of 5+ from last time, under 85% tracking). Corrections and flags are shown to the care team next to the camera's own count.
 - **Result:** Steady/Watch/Check in from the rules engine, an AI-written personal note (optional, safety-checked), one action, retest date, and **this week's plan**: protein target (2025 GLP-1 nutrition advisory: 1.2–1.6 g/kg of reference weight, or about 1.5 g/kg of lean mass), strength 3 times a week matched to joint pain and activity, 150 minutes of walking, day by day.
 - **Home:** latest result, trend, plan, messages from the care team. **Settings:** calendar reminders (.ics), Home Screen install steps, unlink this phone, delete my data.
+
+- **Phone body scan safeguards:** each view is a burst of 3 photos and the median measurement is used; the photo estimate is blended with CUN-BAE (a validated age/sex/BMI formula) so one bad photo can't give an impossible number; a retake is suggested when photo and formula disagree by more than 10 points or the change since the last scan is faster than bodies change; results show a likely range (±4 points).
 
 **Care-team app**
 - Email/password sign-in (scrypt, hashed session tokens, rate limits per account, per email and per IP), clinic sign-up, admin and nurse roles, password change, remove staff.

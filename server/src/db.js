@@ -57,6 +57,7 @@ export function openDb(file = process.env.RISE_DB ?? 'rise.db') {
   };
   add('patients', 'height_in', 'REAL');
   add('patients', 'deleted_at', 'TEXT');
+  add('checks', 'capture_detail', 'TEXT');
   add('providers', 'created_at', 'TEXT');
   for (const [c, t] of [['weight_lb', 'REAL'], ['body_comp_method', 'TEXT'], ['asm_kg', 'REAL'], ['grip_kg', 'REAL'], ['domains', 'TEXT'], ['reasons', 'TEXT'], ['body_comp_detail', 'TEXT']]) add('checks', c, t);
   return db;
@@ -89,16 +90,17 @@ export function checkFromRow(r) {
     normCutoff: r.norm_cutoff, normBand: r.norm_band, weightLb: r.weight_lb, bodyCompMethod: r.body_comp_method,
     asmKg: r.asm_kg, gripKg: r.grip_kg, domains: r.domains ? JSON.parse(r.domains) : null, reasons: r.reasons ? JSON.parse(r.reasons) : [],
     bodyCompDetail: r.body_comp_detail ? JSON.parse(r.body_comp_detail) : null,
+    captureDetail: r.capture_detail ? JSON.parse(r.capture_detail) : null,
   };
 }
 
 export function insertCheck(db, patientId, c, r) {
   return db.prepare(`INSERT INTO checks (patient_id, created_at, stands, duration_sec, confidence, slept_poorly, pain_or_ill, lean_mass_lb,
     body_fat_pct, method, state, flagged, provider_flag, verdict, action, reason, retest_date, below_norm, norm_cutoff, norm_band,
-    weight_lb, body_comp_method, asm_kg, grip_kg, domains, reasons, body_comp_detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    weight_lb, body_comp_method, asm_kg, grip_kg, domains, reasons, body_comp_detail, capture_detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     patientId, r.createdAt, c.stands, c.durationSec ?? 30, c.confidence ?? null, c.sleptPoorly ? 1 : 0, c.painOrIll ? 1 : 0,
     c.leanMassLb ?? null, c.bodyFatPct ?? null, c.method ?? 'phone-video', r.state, r.flagged ? 1 : 0, r.providerFlag ? 1 : 0,
     r.verdict, r.action, r.reason, r.retestDate, r.belowNorm ? 1 : 0, r.normCutoff, r.normBand,
     c.weightLb ?? null, c.bodyCompMethod ?? null, c.asmKg ?? null, c.gripKg ?? null, JSON.stringify(r.domains), JSON.stringify(r.reasons),
-    c.bodyCompDetail ? JSON.stringify(c.bodyCompDetail) : null);
+    c.bodyCompDetail ? JSON.stringify(c.bodyCompDetail) : null, c.captureDetail ? JSON.stringify(c.captureDetail) : null);
 }

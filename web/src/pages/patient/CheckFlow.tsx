@@ -10,9 +10,11 @@ import type { ImportedScan } from '../../lib/bodyScan/importParser';
 import { say, unlockSpeech } from '../../lib/speech';
 import { requestMotionAccess } from '../../lib/deviceSensors';
 import { ReportPhoto } from '../../components/ReportPhoto';
+import { CountReview } from '../../components/CountReview';
+import { reviewCount } from '../../lib/standReview';
 import type { Reading } from '../../lib/types';
 
-type Step = 'readiness' | 'scan' | 'grip' | 'setup' | 'camera' | 'manual' | 'saving';
+type Step = 'readiness' | 'scan' | 'grip' | 'setup' | 'camera' | 'review' | 'manual' | 'saving';
 type CameraMode = 'real' | 'simulated';
 import type { BodyCompMethod, Patient } from '../../lib/types';
 
@@ -53,8 +55,9 @@ export function CheckFlow() {
   const [importNotes, setImportNotes] = useState<string[]>([]);
   const fromPhone = (r: PhoneScan) => {
     setWeight(String(r.weightLb)); setLean(String(r.leanMassLb)); setFat(String(r.bodyFatPct)); setAsm(''); setMethod('rise-scan');
-    setDetail({ source: 'rise-scan', neckIn: r.neckIn, waistIn: r.waistIn, hipIn: r.hipIn, equation: 'US Navy (Hodgdon & Beckett 1984)' });
-    setImportNotes(['From your Rise scan. Check the numbers, then continue.']); setScanMode('review');
+    setDetail({ source: 'rise-scan', neckIn: r.neckIn, waistIn: r.waistIn, hipIn: r.hipIn, photoPct: r.estimate.photoPct, formulaPct: r.estimate.formulaPct,
+      rangeLow: r.estimate.low, rangeHigh: r.estimate.high, photos: r.photosUsed, warning: r.estimate.warning ? 'yes' : 'no', method: 'Navy circumference + CUN-BAE blend' });
+    setImportNotes([`From your Rise scan (likely ${r.estimate.low}–${r.estimate.high}% body fat). Check the numbers, then continue.`]); setScanMode('review');
   };
   const fromImport = (r: ImportedScan) => {
     if (r.weightLb != null) setWeight(String(r.weightLb));
@@ -90,24 +93,41 @@ export function CheckFlow() {
     }).catch(() => undefined);
   }, []);
   const lastScan = patient ? [...patient.checks].reverse().find((c) => c.bodyCompMethod) : undefined;
+  const prevRise = patient ? [...patient.checks].reverse().find((c) => c.bodyCompMethod === 'rise-scan' && c.bodyFatPct != null) : undefined;
+  const prevRiseScan = prevRise ? { bodyFatPct: prevRise.bodyFatPct!, daysAgo: (Date.now() - new Date(prevRise.createdAt).getTime()) / 864e5 } : null;
   const gripKg = grip ? Math.round((gripUnit === 'kg' ? Number(grip) : Number(grip) / LB_PER_KG) * 10) / 10 : null;
   const [manual, setManual] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
-  const save = useCallback(async (c: Capture, captureMethod: 'phone-video' | 'demo' | 'manual') => {
+  const [pending, setPending] = useState<{ c: Capture; how: 'phone-video' | 'demo' } | null>(null);
+  const lastStands = patient ? [...patient.checks].reverse().find((k) => !k.flagged)?.stands ?? null : null;
+  const save = useCallback(async (c: Capture & { countedByCamera?: number; adjusted?: boolean }, captureMethod: 'phone-video' | 'demo' | 'manual') => {
     setStep('saving');
+    const { repTimes, series: _series, countedByCamera, adjusted, ...capture } = c;
+    const flag = countedByCamera != null ? reviewCount({ stands: countedByCamera, repTimes, confidence: c.confidence, lastStands }) : null;
+    const reps = repTimes?.map((t) => t.toFixed(1)).join(',');
     try {
       const r = await api.submitCheck({
-        ...c, method: captureMethod, sleptPoorly, painOrIll,
+        ...capture, method: captureMethod, sleptPoorly, painOrIll,
+        captureDetail: countedByCamera != null ? { countedByCamera, adjusted: adjusted ? 'yes' : 'no', reviewFlag: flag?.message ?? null,
+          standTimes: reps && reps.length <= 120 ? reps : null, armsFlags: c.armsFlags ?? 0 } : null,
         weightLb: weight ? Number(weight) : null, leanMassLb: lean ? Number(lean) : null, bodyFatPct: fat ? Number(fat) : null,
         asmKg: asm ? Number(asm) : null, bodyCompMethod: lean || fat || asm ? method || null : null, gripKg: hasGrip ? gripKg : null,
         bodyCompDetail: lean || fat ? detail : null,
       });
       nav(`/result/${r.id}`, { replace: true });
     } catch (e) { setErr((e as Error).message); setStep(captureMethod === 'manual' ? 'manual' : 'camera'); }
-  }, [sleptPoorly, painOrIll, lean, fat, weight, asm, method, hasGrip, gripKg, detail, nav]);
+  }, [sleptPoorly, painOrIll, lean, fat, weight, asm, method, hasGrip, gripKg, detail, nav, lastStands]);
 
-  const onCapture = useCallback((c: Capture) => save(c, 'phone-video'), [save]);
+  const onCapture = useCallback((c: Capture) => { setPending({ c, how: 'phone-video' }); setStep('review'); }, []);
+  const onSimulated = useCallback((c: Capture) => { setPending({ c, how: 'demo' }); setStep('review'); }, []);
+
+  if (step === 'review' && pending) return (
+    <Screen back={{ to: '/', label: 'Cancel' }}>
+      <div className="stack"><div className="rise-label">Done</div><h1 className="display">Here's what the camera counted</h1></div>
+      <CountReview capture={pending.c} lastStands={lastStands} onSave={(c) => save(c, pending.how)} onRedo={() => { setPending(null); setStep('camera'); }} />
+    </Screen>
+  );
 
   if (step === 'readiness') return (
     <Screen back={{ to: '/', label: 'Cancel' }} footer={<button className="rise-btn rise-btn--primary rise-btn--block"
@@ -147,7 +167,7 @@ export function CheckFlow() {
           {lastScan?.bodyCompMethod && <p className="rise-caption" style={{ margin: 0 }}>Last time you used: {METHODS.find(([v]) => v === lastScan.bodyCompMethod)?.[1]}. Using the same way each time gives the most reliable comparison.</p>}
         </>
       )}
-      {scanMode === 'phone' && <BodyScanCapture sex={patient?.sex ?? 'female'} heightIn={patient?.heightIn ?? null} weightLb={weight} onWeight={setWeight} onDone={fromPhone} onCancel={() => setScanMode('choose')} />}
+      {scanMode === 'phone' && <BodyScanCapture sex={patient?.sex ?? 'female'} age={patient?.age ?? 50} previous={prevRiseScan} heightIn={patient?.heightIn ?? null} weightLb={weight} onWeight={setWeight} onDone={fromPhone} onCancel={() => setScanMode('choose')} />}
       {scanMode === 'import' && <BodyCompImport onDone={fromImport} onCancel={() => setScanMode('choose')} />}
       {scanMode === 'photo' && <ReportPhoto onDone={fromReading} onCancel={() => setScanMode('choose')} onTypeInstead={() => { setDetail({ source: 'typed' }); setImportNotes([]); setScanMode('review'); }} />}
     </Screen>
@@ -242,7 +262,7 @@ export function CheckFlow() {
   if (step === 'camera') return (
     <Screen back={{ to: '/', label: 'Cancel' }}>
       <ErrorNote message={err} />
-      {cameraMode === 'simulated' ? <DemoCamera onDone={(c) => save(c, 'demo')} /> : <CameraStage onDone={onCapture} onManual={() => setStep('manual')} />}
+      {cameraMode === 'simulated' ? <DemoCamera onDone={onSimulated} lastStands={lastStands} /> : <CameraStage onDone={onCapture} onManual={() => setStep('manual')} />}
     </Screen>
   );
 

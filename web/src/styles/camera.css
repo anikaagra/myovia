@@ -24,3 +24,24 @@
 .danger-fill { background: var(--act) !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .rise-checks--compact .rise-check { min-height: 40px; font-size: 16px; padding: 0 var(--space-3); }
+.count-chart { padding: var(--space-3); display: grid; gap: var(--space-2); }
+.count-chart svg { width: 100%; height: auto; display: block; }
+.count-chart__path { fill: none; stroke: var(--brand); stroke-width: 2.5; stroke-linejoin: round; }
+.count-chart__line { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.count-chart__dot { fill: var(--trace); stroke: var(--paper-raised); stroke-width: 2; }
+.count-chart__n { fill: #fff; font: 700 9px var(--font-mono); }
+.count-chart__axis { fill: var(--ink-muted); font: 400 11px var(--font-sans); }
+.stepper { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: var(--space-3); }
+.stepper .rise-btn { font-size: 28px; padding: 0; }
+.stepper__n { text-align: center; font-size: 40px; line-height: 48px; }
+.demo-cam { display: block; }
+.demo-cam__scene { width: 100%; height: 100%; display: block; }
+.demo-fig line { stroke: var(--brand); stroke-width: 9; stroke-linecap: round; }
+.demo-fig circle { fill: var(--brand); }
+.demo-fig--fix line { stroke: var(--watch); }
+.demo-fig--fix circle { fill: var(--watch); }
+.demo-cam .path { fill: none; stroke: var(--trace); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1 8; }
+.demo-cam .hip { fill: var(--trace); }
+.cam__badge--quiet { opacity: .75; }
+.demo-settings summary { cursor: pointer; }
+.demo-settings .field { margin-top: var(--space-2); }

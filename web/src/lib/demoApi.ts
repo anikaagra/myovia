@@ -8,7 +8,7 @@ import { weeklyPlan } from '../../../server/src/plan.js';
 // @ts-expect-error plain JS module shared with the server
 import { templateNote } from '../../../server/src/aiText.js';
 // @ts-expect-error plain JS module shared with the server
-import { DEMO_PEOPLE, DEMO_DATES } from '../../../server/src/demoData.js';
+import { DEMO_PEOPLE, DEMO_DATES, demoDaysAgo } from '../../../server/src/demoData.js';
 import type {
   AuditRow, Check, CheckResult, ClinicList, ClinicPatient, ClinicSettings, Coach, FollowUp, FollowUpKind, Me, Note, Patient, Plan,
   Reading, Staff, StaffSession, SubmitResult,
@@ -19,7 +19,7 @@ import { demoCoach, demoNote, demoReadReport, demoAiAvailable, demoKey } from '.
 type Row = Check & { patientId: string };
 type Base = Omit<Patient, 'checks' | 'nextDue' | 'checkEveryDays'>;
 type Store = { patients: Base[]; checks: Row[]; followUps: FollowUp[]; audit: AuditRow[]; nextId: number; coach: Record<string, Coach> };
-const KEY = 'rise.demo.v3';
+const KEY = 'rise.demo.v4';
 const CLINIC = { code: 'DEMO42', name: 'Bay Area Weight Care (demo)' };
 export const DEMO_LOGIN = { email: 'nurse@demo.rise', password: 'rise-demo-2026' };
 const STAFF: Staff = { id: 'staff-demo', name: 'Jordan Lee, RN', email: DEMO_LOGIN.email, role: 'admin' };
@@ -32,6 +32,7 @@ function toRow(id: number, patientId: string, c: Record<string, unknown>, r: Che
     action: r.action, reason: r.reason, retestDate: r.retestDate, belowNorm: r.belowNorm, normCutoff: r.normCutoff, normBand: r.normBand,
     weightLb: (c.weightLb as number) ?? null, bodyCompMethod: (c.bodyCompMethod as Check['bodyCompMethod']) ?? null, asmKg: (c.asmKg as number) ?? null,
     gripKg: (c.gripKg as number) ?? null, domains: r.domains, reasons: r.reasons, bodyCompDetail: (c.bodyCompDetail as Record<string, unknown>) ?? null,
+    captureDetail: (c.captureDetail as Check['captureDetail']) ?? null,
   };
 }
 
@@ -51,7 +52,10 @@ function seed(): Store {
   }
   // One patient already reviewed, so the list shows both states.
   s.followUps.push({ id: s.nextId++, patientId: 'demo-dennis', checkId: null, staffId: STAFF.id, staffName: STAFF.name, kind: 'contacted',
-    note: 'Called Dennis. Starting a PT strength program next week.', createdAt: '2026-10-02T18:00:00.000Z' });
+    note: 'Called Dennis. Starting a PT strength program next week.', createdAt: demoDaysAgo(5) });
+  // Linda's earlier message from her nurse, so the example patient's home screen shows the loop closing.
+  s.followUps.push({ id: s.nextId++, patientId: 'demo-linda', checkId: null, staffId: STAFF.id, staffName: STAFF.name, kind: 'message',
+    note: 'Hi Linda, thanks for doing your check. Let’s add a protein shake at breakfast and the chair routine 3 days a week. I’ll call you Thursday.', createdAt: demoDaysAgo(33) });
   return s;
 }
 
@@ -248,5 +252,8 @@ export const demoApi = {
   changePassword: (): Promise<void> => fail('Changing the password isn’t available in the demo.'),
   removeStaff: (): Promise<void> => fail('Removing staff isn’t available in the demo.'),
 };
+
+/** Demo: open the patient app as an example patient with months of history. */
+export function demoSignInAs(id = 'demo-linda') { load(); session.set(id); }
 
 export function demoReset() { mem = seed(); save(); session.clear(); staffSession.clear(); }

@@ -232,6 +232,7 @@ export function createApp(db, opts = {}) {
       weightLb: num(b.weightLb), leanMassLb: num(b.leanMassLb), bodyFatPct: num(b.bodyFatPct), asmKg: num(b.asmKg),
       bodyCompMethod: METHODS.includes(b.bodyCompMethod) ? b.bodyCompMethod : null, gripKg: num(b.gripKg),
       bodyCompDetail: cleanDetail(b.bodyCompDetail),
+      captureDetail: ['phone-video', 'demo'].includes(b.method) ? cleanDetail(b.captureDetail) : null,
     };
     need(c.durationSec >= 25 && c.durationSec <= 35, 'The chair check must last 30 seconds.');
     need(c.weightLb == null || (c.weightLb >= 60 && c.weightLb <= 800), 'Weight must be between 60 and 800 lb.');

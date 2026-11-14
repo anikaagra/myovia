@@ -8,6 +8,7 @@ export type Check = {
   retestDate: string; belowNorm: boolean; normCutoff: number; normBand: string;
   weightLb: number | null; bodyCompMethod: BodyCompMethod | null; asmKg: number | null; gripKg: number | null;
   bodyCompDetail: Record<string, unknown> | null;
+  captureDetail?: { countedByCamera?: number; adjusted?: 'yes' | 'no'; reviewFlag?: string | null; standTimes?: string | null; armsFlags?: number } | null;
   domains: Domains | null; reasons: string[];
 };
 

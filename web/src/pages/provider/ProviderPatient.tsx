@@ -336,7 +336,10 @@ export function ProviderPatient() {
                         <td className="rise-num">{c.weightLb ?? '—'}</td>
                         <td className="rise-num">{c.leanMassLb ?? '—'}{c.domains?.mass.leanShare != null ? ` (${Math.round(c.domains.mass.leanShare * 100)}%)` : ''}</td>
                         <td className="rise-num">{c.gripKg != null ? `${c.gripKg} kg` : '—'}</td>
-                        <td>{c.method === 'demo' || c.method === 'manual' ? 'Self-reported' : `Video${c.confidence != null ? ` · ${Math.round(c.confidence * 100)}%` : ''}`}</td>
+                        <td>{c.method === 'manual' ? 'Self-reported' : `${c.method === 'demo' ? 'Demo video' : 'Video'}${c.confidence != null ? ` · ${Math.round(c.confidence * 100)}% tracked` : ''}`}
+                          {c.captureDetail?.adjusted === 'yes' && <div className="rise-caption">Camera counted {c.captureDetail.countedByCamera}; patient changed it to {c.stands}</div>}
+                          {c.captureDetail?.reviewFlag && <div className="rise-caption">Count check: {c.captureDetail.reviewFlag}</div>}
+                          {!!c.captureDetail?.armsFlags && <div className="rise-caption">Arms uncrossed on {c.captureDetail.armsFlags} stand{c.captureDetail.armsFlags === 1 ? '' : 's'}</div>}</td>
                         <td>{c.sleptPoorly || c.painOrIll ? [c.sleptPoorly && 'Slept badly', c.painOrIll && 'Pain or ill'].filter(Boolean).join(', ') : 'OK'}</td>
                       </tr>
                     ))}

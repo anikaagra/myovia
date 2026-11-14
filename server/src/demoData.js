@@ -15,5 +15,8 @@ export const DEMO_PEOPLE = [
   ['Rosa', 59, 'female', 'yes', 'semaglutide', '1.7 mg', '2026-05-05', 214, 190, 'some', 'none', 'no', 'travel to see my sister', 62,
     [[15, 204, 107.0, 22], [16, 197, 105.4, 22], [15, 190, 103.6, 21]]],
 ];
-export const DEMO_DATES = ['2026-08-03T17:00:00.000Z', '2026-09-01T17:00:00.000Z', '2026-10-01T17:00:00.000Z'];
+// Check dates relative to today, so the demo always looks current: about 2 months, 1 month and 1 week ago.
+const daysAgo = (n) => { const d = new Date(Date.now() - n * 864e5); d.setUTCHours(17, 0, 0, 0); return d.toISOString(); };
+export const DEMO_DATES = [daysAgo(62), daysAgo(34), daysAgo(6)];
+export const demoDaysAgo = daysAgo;
 

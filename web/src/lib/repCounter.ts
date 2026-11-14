@@ -127,6 +127,10 @@ export class StandCounter {
   private thighs: number[] = [];
   private smoothH: number | null = null;
   private rawTail: number[] = [];
+  /** Time of each counted stand (ms, same clock as update), and a ~10 Hz trace of hip height for the review chart. */
+  repTimes: number[] = [];
+  series: [number, number][] = [];
+  private lastSeriesAt = -Infinity;
 
   constructor(private opts = { up: 0.65, down: 0.25, standAngle: 150, sitAngle: 120, minRepMs: 700, alpha: 0.5 }) {}
 
@@ -162,6 +166,7 @@ export class StandCounter {
     this.smoothH = this.smoothH == null ? raw : this.smoothH + this.opts.alpha * (raw - this.smoothH);
     const height = this.smoothH;
     this.lastHeight = height;
+    if (tMs - this.lastSeriesAt >= 100) { this.series.push([tMs, Math.round(height * 100) / 100]); this.lastSeriesAt = tMs; }
     const knee = kneeAngle(lm)?.angle ?? null;
     if (armsUncrossed(lm) && this.phase === 'seated') this.armsThisRep = true;
 
@@ -174,6 +179,7 @@ export class StandCounter {
       if (wasSeated && tMs - this.lastRepAt >= this.opts.minRepMs) {
         this.reps++;
         this.lastRepAt = tMs;
+        this.repTimes.push(tMs);
         if (this.armsThisRep) this.armsFlags++;
         this.armsThisRep = false;
         return true;
@@ -185,7 +191,10 @@ export class StandCounter {
   /** STEADI: a stand that is more than halfway up when time runs out counts. */
   finish(): number {
     // Uses the last two unfiltered frames (filters lag behind a rising patient), both of which must be past halfway.
-    if (this.phase === 'seated' && this.rawTail.length === 2 && Math.min(...this.rawTail) > 0.5) this.reps++;
+    if (this.phase === 'seated' && this.rawTail.length === 2 && Math.min(...this.rawTail) > 0.5) {
+      this.reps++;
+      this.repTimes.push(this.series.length ? this.series[this.series.length - 1][0] : 0);
+    }
     return this.reps;
   }
 

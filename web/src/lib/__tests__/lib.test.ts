@@ -267,3 +267,27 @@ describe('body scan photo checks', () => {
     expect(scanFrameFix(tight)).toMatch(/too close to the top/);
   });
 });
+
+import { reviewCount, simulateStands } from '../standReview';
+describe('count review', () => {
+  const even = (n: number) => Array.from({ length: n }, (_, i) => 1 + i * 2.2);
+  it('accepts a normal count', () => {
+    expect(reviewCount({ stands: 12, repTimes: even(12), lastStands: 13 }).level).toBe('ok');
+  });
+  it('flags a big jump from last time', () => {
+    expect(reviewCount({ stands: 20, repTimes: even(20).map((t) => t * 0.6), lastStands: 12 }).message).toMatch(/8 more than last time/);
+  });
+  it('flags stands counted too close together', () => {
+    expect(reviewCount({ stands: 12, repTimes: [1, 1.3, 1.6, 4, 6, 8, 10, 12, 14, 16, 18, 20] }).message).toMatch(/very close together/);
+  });
+  it('flags a long pause mid-test', () => {
+    expect(reviewCount({ stands: 8, repTimes: [1, 3, 5, 7, 16, 18, 20, 22] }).message).toMatch(/long pause/);
+  });
+  it('simulated recordings have the requested stands, spread over 30 seconds', () => {
+    const s = simulateStands(13);
+    expect(s.repTimes.length).toBe(13);
+    expect(Math.max(...s.repTimes)).toBeLessThan(30);
+    expect(s.series.length).toBe(300);
+    expect(reviewCount({ stands: 13, repTimes: s.repTimes }).level).toBe('ok');
+  });
+});

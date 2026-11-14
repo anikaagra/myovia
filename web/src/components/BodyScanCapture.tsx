@@ -6,16 +6,18 @@ import { useScanChecks } from '../lib/useLiveChecks';
 import { requestMotionAccess } from '../lib/deviceSensors';
 import { SIMULATE_CAMERA } from '../lib/api';
 import { navyBodyFat } from '../lib/bodyScan/geometry';
+import { combineEstimate, median, type Estimate } from '../lib/bodyScan/estimate';
 
-export type PhoneScan = ScanMeasurements & { weightLb: number; leanMassLb: number };
+export type PhoneScan = ScanMeasurements & { weightLb: number; leanMassLb: number; estimate: Estimate; photosUsed: number };
 type Phase = 'intro' | 'camera' | 'upload' | 'working' | 'result';
 type Shot = 'front' | 'side';
 
 const TIMER_S = 10;
 
 /** Two photos (front, side) → neck, waist and hip estimates → estimated body fat and lean mass. */
-export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onCancel }: {
-  sex: Sex; heightIn: number | null; weightLb: string; onWeight: (v: string) => void; onDone: (s: PhoneScan) => void; onCancel: () => void;
+export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeight, onDone, onCancel }: {
+  sex: Sex; age: number; heightIn: number | null; weightLb: string; previous?: { bodyFatPct: number; daysAgo: number } | null;
+  onWeight: (v: string) => void; onDone: (s: PhoneScan) => void; onCancel: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>('intro');
   const [shot, setShot] = useState<Shot>('front');
@@ -23,7 +25,7 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<PhoneScan | null>(null);
   const [height, setHeight] = useState(heightIn ? String(heightIn) : '');
-  const photos = useRef<Partial<Record<Shot, HTMLCanvasElement>>>({});
+  const photos = useRef<Partial<Record<Shot, HTMLCanvasElement[]>>>({});
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timers = useRef<number[]>([]);
@@ -43,12 +45,23 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   async function process() {
     setPhase('working'); setErr(null);
     try {
-      const [front, side] = await Promise.all([analyzePhoto(photos.current.front!), analyzePhoto(photos.current.side!)]) as [View | null, View | null];
-      if (!front || !side) throw new Error(`We couldn't find you in the ${!front ? 'front' : 'side'} photo. Stand 6 to 8 feet from the phone with your whole body in view.`);
-      const { result: m, issue } = measureScan(front, side, Number(height), sex);
-      if (!m) throw new Error(issue ?? 'Try the photos again.');
-      const w = Number(weightLb);
-      setResult({ ...m, weightLb: w, leanMassLb: Math.round(w * (1 - m.bodyFatPct / 100) * 10) / 10 });
+      // Each view is a short burst of photos. Measure every front/side pair and keep the median, so one blurry
+      // frame or a breath in can't swing the result.
+      const fronts = (await Promise.all((photos.current.front ?? []).map(analyzePhoto))) as (View | null)[];
+      const sides = (await Promise.all((photos.current.side ?? []).map(analyzePhoto))) as (View | null)[];
+      const F = fronts.filter(Boolean) as View[], S = sides.filter(Boolean) as View[];
+      if (!F.length || !S.length) throw new Error(`We couldn't find you in the ${!F.length ? 'front' : 'side'} photo. Stand 6 to 8 feet from the phone with your whole body in view.`);
+      const results: ScanMeasurements[] = [];
+      let lastIssue: string | null = null;
+      for (let i = 0; i < Math.max(F.length, S.length); i++) {
+        const { result: m, issue } = measureScan(F[i % F.length], S[i % S.length], Number(height), sex);
+        if (m) results.push(m); else lastIssue = issue;
+      }
+      if (!results.length) throw new Error(lastIssue ?? 'Try the photos again.');
+      const r1 = (n: number) => Math.round(n * 10) / 10;
+      const m: ScanMeasurements = { neckIn: r1(median(results.map((x) => x.neckIn))), waistIn: r1(median(results.map((x) => x.waistIn))),
+        hipIn: r1(median(results.map((x) => x.hipIn))), bodyFatPct: r1(median(results.map((x) => x.bodyFatPct))) };
+      finish(m, results.length);
       setPhase('result');
       say('Your scan is done.', { force: true });
     } catch (e) {
@@ -61,12 +74,24 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   }
 
   // The shareable demo can't open a camera or load the model, so it shows example measurements instead.
+  function finish(m: ScanMeasurements, photosUsed: number) {
+    const w = Number(weightLb);
+    const estimate = combineEstimate({ photoPct: m.bodyFatPct, age, sex, heightIn: Number(height), weightLb: w, previous });
+    setResult({ ...m, bodyFatPct: estimate.bodyFatPct, weightLb: w, leanMassLb: estimate.leanMassLb, estimate, photosUsed });
+    setPhase('result');
+    say(estimate.warning ? 'Your scan is done, but it may be off. Please check the screen.' : 'Your scan is done.', { force: true });
+  }
+
   function demoScan() {
+    // Example measurements in proportion to the patient's height and weight, as a real scan would produce.
     const h = Number(height), w = Number(weightLb);
-    const neckIn = sex === 'male' ? 16 : 13.5, waistIn = Math.round(h * (w > 200 ? 0.62 : 0.54) * 10) / 10, hipIn = Math.round(h * 0.66 * 10) / 10;
-    const bodyFatPct = Math.round((navyBodyFat(sex, h, neckIn, waistIn, hipIn) ?? 35) * 10) / 10;
+    const bmi = (w * 0.4536) / (h * 0.0254) ** 2;
+    const neckIn = (sex === 'male' ? 14.2 : 12.4) + (bmi - 25) * 0.14;
+    const waistIn = h * (0.42 + (bmi - 22) * 0.0125), hipIn = h * (sex === 'male' ? 0.56 : 0.6) + (bmi - 25) * 0.5;
+    const r1 = (n: number) => Math.round(n * 10) / 10;
+    const bodyFatPct = r1(navyBodyFat(sex, h, neckIn, waistIn, hipIn) ?? 35);
     setPhase('working');
-    setTimeout(() => { setResult({ neckIn, waistIn, hipIn, bodyFatPct, weightLb: w, leanMassLb: Math.round(w * (1 - bodyFatPct / 100) * 10) / 10 }); setPhase('result'); }, 1200);
+    setTimeout(() => finish({ neckIn: r1(neckIn), waistIn: r1(waistIn), hipIn: r1(hipIn), bodyFatPct }, 6), 1400);
   }
 
   async function startCamera() {
@@ -85,14 +110,23 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   }
 
   function capture(which: Shot) {
-    const v = videoRef.current!;
-    const c = document.createElement('canvas');
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    c.getContext('2d')!.drawImage(v, 0, 0);
-    photos.current[which] = c;
-    say('Got it.', { force: true });
-    if (which === 'front') { setShot('side'); window.setTimeout(() => say('Now turn so your side faces the phone, arms relaxed.', { force: true }), 900); }
-    else { stopCamera(); process(); }
+    // A burst of 3 frames, 300 ms apart.
+    const grab = () => {
+      const v = videoRef.current!;
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext('2d')!.drawImage(v, 0, 0);
+      (photos.current[which] ??= []).push(c);
+    };
+    photos.current[which] = [];
+    grab();
+    window.setTimeout(grab, 300);
+    window.setTimeout(() => {
+      grab();
+      say('Got it.', { force: true });
+      if (which === 'front') { setShot('side'); window.setTimeout(() => say('Now turn so your side faces the phone, arms relaxed.', { force: true }), 900); }
+      else { stopCamera(); process(); }
+    }, 600);
   }
 
   // After the countdown, the photo is taken the moment every check has passed for a second (like Spren's
@@ -110,7 +144,7 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
 
   async function onFiles(which: Shot, files: FileList | null) {
     if (!files?.[0]) return;
-    photos.current[which] = await fileToCanvas(files[0]);
+    photos.current[which] = [await fileToCanvas(files[0])];
     setErr(null);
     if (photos.current.front && photos.current.side) { const e = ready(); if (e) return setErr(e); process(); }
     else setShot(which === 'front' ? 'side' : 'front');
@@ -119,9 +153,10 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   if (phase === 'result' && result) return (
     <div className="stack" style={{ gap: 16 }}>
       <h2 className="rise-title">Your scan results</h2>
+      {result.estimate.warning && <p className="note" role="alert"><b>This scan may be off.</b> {result.estimate.warning}</p>}
       <div className="mini-stats">
-        <div><span className="rise-caption">Body fat (estimate)</span><b>{result.bodyFatPct}%</b></div>
-        <div><span className="rise-caption">Lean mass (estimate)</span><b>{result.leanMassLb} lb</b></div>
+        <div><span className="rise-caption">Body fat (estimate)</span><b>{result.bodyFatPct}%</b><span className="rise-caption">likely {result.estimate.low}–{result.estimate.high}%</span></div>
+        <div><span className="rise-caption">Lean mass (estimate)</span><b>{result.leanMassLb} lb</b><span className="rise-caption">likely {result.estimate.leanLow}–{result.estimate.leanHigh} lb</span></div>
       </div>
       <dl className="kv">
         <dt>Neck</dt><dd className="rise-num">{result.neckIn} in</dd>
@@ -130,9 +165,15 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
         <dt>Weight</dt><dd className="rise-num">{result.weightLb} lb</dd>
       </dl>
       {SIMULATE_CAMERA && <p className="note">Demo: these are example measurements. In the app they come from your two photos.</p>}
-      <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline in two photos. It can be a few percent off from a DEXA scan, so we compare it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
-      <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => onDone(result)}>Use these numbers</button>
-      <button className="rise-btn rise-btn--quiet" onClick={() => { setResult(null); setPhase('intro'); }}>Scan again</button>
+      <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline. A phone scan can be a few points off a DEXA scan, so Rise compares it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
+      <p className="rise-caption" style={{ margin: 0 }}>Measured from {result.photosUsed} photo{result.photosUsed === 1 ? '' : 's'} and checked against what's typical for your age, height and weight. Your trend over several scans is more reliable than any one scan.</p>
+      {result.estimate.warning ? <>
+        <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => { setResult(null); setPhase('intro'); }}>Scan again</button>
+        <button className="rise-btn rise-btn--secondary rise-btn--block" onClick={() => onDone(result)}>Use these numbers anyway</button>
+      </> : <>
+        <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => onDone(result)}>Use these numbers</button>
+        <button className="rise-btn rise-btn--quiet" onClick={() => { setResult(null); setPhase('intro'); }}>Scan again</button>
+      </>}
     </div>
   );
 
