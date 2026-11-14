@@ -1,9 +1,21 @@
+# One-click deploy of the full Rise app (server, database, AI) on Render.
+# In Render: New > Blueprint > pick this repo. Then set ANTHROPIC_API_KEY (or add the key later in
+# the care-team Settings page). The starter plan keeps the database on a persistent disk.
 services:
   - type: web
     name: rise
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RISE_AI_MODEL
+        value: claude-sonnet-5-5
+      - key: RISE_AI_FAST_MODEL
+        value: claude-haiku-5-5
+      - key: RISE_SEED
+        value: "true"
     disk:
       name: rise-data
       mountPath: /data

@@ -21,7 +21,7 @@ The answers place the patient in a risk tier (draft rules, to be set with clinic
 
 | Tier | Draft criteria | Check every | Flag sensitivity |
 |---|---|---|---|
-| Higher | Woman past menopause, or age 65+, or a fall in the past year, or losing weight fast | 2 weeks | Watch at a drop of 1 from baseline; Check in after one Watch |
+| Higher | Woman past menopause, or age 65+, or a fall in the past year, or losing weight fast | 2 weeks | Watch at a drop of 2 from baseline; Check in at 3 |
 | Standard | Everyone else | 4 weeks | Rules below |
 
 Then the chair check ("Use a firm chair without arms, about knee height") and phone setup: propped at hip height, 2 to 3 steps away, side view.

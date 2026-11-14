@@ -9,7 +9,8 @@
     "test": "vitest run",
     "postinstall": "node scripts/copy-wasm.mjs",
     "fetch-model": "node scripts/fetch-model.mjs",
-    "build:demo": "VITE_DEMO=1 vite build --outDir dist-demo --base ./"
+    "build:demo": "VITE_DEMO=1 VITE_ROUTER=memory vite build --outDir dist-demo --base ./",
+    "build:pages": "VITE_DEMO=1 vite build --outDir dist-pages --base /startup/ && cp dist-pages/index.html dist-pages/404.html"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "0.10.14",

@@ -19,7 +19,38 @@ export function demoSampler(): Promise<Sample | null> {
 
 const schemaText = (tool: { input_schema: unknown }) => JSON.stringify(tool.input_schema);
 
+// Phone demo only (GitHub Pages): an Anthropic key the owner pasted into Settings, kept on this device only and
+// sent straight to Anthropic. Never use this pattern with shared devices or real patients; the server keeps keys there.
+const KEY = 'rise.demo.anthropicKey';
+export const demoKey = {
+  get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
+  set: (k: string) => { try { if (k) localStorage.setItem(KEY, k); else localStorage.removeItem(KEY); } catch { /* ignore */ } },
+};
+const MODEL = 'claude-sonnet-5-5';
+
+async function direct<Out>(system: string, tool: { name: string; input_schema: unknown }, content: unknown): Promise<Out | null> {
+  const key = demoKey.get();
+  if (!key) return null;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1400, system, tools: [tool], tool_choice: { type: 'tool', name: tool.name }, messages: [{ role: 'user', content }] }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return (body.content?.find((b: { type: string }) => b.type === 'tool_use')?.input as Out) ?? null;
+  } catch { return null; }
+}
+
+export async function demoAiAvailable() { return Boolean(demoKey.get() || (await demoSampler())); }
+
 async function ask<Out>(system: string, tool: { name: string; input_schema: unknown }, user: string, opts: Record<string, unknown> = {}): Promise<Out | null> {
+  if (demoKey.get()) {
+    const images = (opts.images as Blob[] | undefined) ?? [];
+    const blocks = await Promise.all(images.map(async (b) => ({ type: 'image', source: { type: 'base64', media_type: b.type, data: await blobToBase64(b) } })));
+    return direct<Out>(system, tool, images.length ? [...blocks, { type: 'text', text: user }] : user);
+  }
   const s = await demoSampler();
   if (!s) return null;
   const input = `${system}\n\n${user}\n\nReply with only a JSON object matching this JSON Schema, no other text:\n${schemaText(tool)}`;
@@ -44,4 +75,8 @@ export async function demoReadReport(blob: Blob): Promise<Reading | null> {
   const out = await ask<Record<string, unknown>>(T.READ_SYSTEM, T.READ_TOOL,
     'Read the body composition values from the attached report image. Use null for anything not shown.', { images: [blob] });
   return out ? (T.cleanReading(out) as Reading) : null;
+}
+
+function blobToBase64(b: Blob): Promise<string> {
+  return new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => bad(r.error); r.readAsDataURL(b); });
 }

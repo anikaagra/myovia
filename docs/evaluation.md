@@ -8,8 +8,10 @@ All thresholds below are **drafts** from customer discovery and published refere
 
 | Result | Standard tier | Higher-risk tier |
 |---|---|---|
-| Watch | Down 2+ stands from the first check, or newly below the age and sex norm | Down 1+ stand, or newly below the norm |
+| Watch | Down 2+ stands from the first check, or newly below the age and sex norm | Down 2+ stands, or newly below the norm |
 | Check in | Down 4+ stands from the first check | Down 3+ stands |
+
+A 1-stand change is within test–retest noise for this test, so no tier reacts to it. Higher-risk patients check every 2 weeks instead of 4 and reach Check in sooner.
 
 Norm: CDC STEADI 30-Second Chair Stand, "below average" by age and sex (ages 60–94; under 60 uses the 60–64 row and is marked extrapolated).
 
@@ -55,3 +57,12 @@ Whichever way is used, the device is saved with the scan, and comparisons only u
 - Lean mass includes water, organs and connective tissue, not only muscle.
 - Phone sit-to-stand counting is a pilot measure until validated against in-person testing.
 - Grip and body composition are patient-entered; a scan SDK and Bluetooth dynamometer would remove typing errors.
+
+## Weekly plan
+
+Every result comes with a week's plan, built in `server/src/plan.js` (AI may reword it, but never changes the numbers):
+
+- **Protein:** 1.2–1.6 g per kg per day (2025 joint advisory on nutrition with GLP-1 therapy). For BMI 30 or more it uses the weight at BMI 25 for the patient's height. When lean mass is known, the target is at least about 1.5 g per kg of lean mass. Shown as grams a day and a rough per-meal amount, with a kidney-disease caution.
+- **Strength:** 3 sessions a week. Chair-based moves when the patient reported knee, hip or back pain; beginner moves for low activity; grip and carrying moves when grip is the measure that changed.
+- **Aerobic:** 150 minutes a week of walking, or a bike for joint pain.
+- **Readiness flag:** gentle sessions only, retest in a week.

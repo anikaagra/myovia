@@ -8,3 +8,4 @@ web/public/mediapipe/
 web/public/models/
 *.tsbuildinfo
 web/dist-demo/
+web/dist-pages/

@@ -14,7 +14,7 @@ import type {
   Reading, Staff, StaffSession, SubmitResult,
 } from './types';
 import { session, staffSession } from './session';
-import { demoCoach, demoNote, demoReadReport, demoSampler } from './demoAi';
+import { demoCoach, demoNote, demoReadReport, demoAiAvailable, demoKey } from './demoAi';
 
 type Row = Check & { patientId: string };
 type Base = Omit<Patient, 'checks' | 'nextDue' | 'checkEveryDays'>;
@@ -130,7 +130,7 @@ export const demoApi = {
     if (c.weightLb != null) rec.currentWeightLb = c.weightLb;
     save();
     const fresh = full(p.id)!;
-    return delay({ ...r, id, plan: weeklyPlan(fresh, r, c.weightLb), patient: meView(fresh), aiAvailable: true });
+    return delay({ ...r, id, plan: weeklyPlan(fresh, r, c.weightLb), patient: meView(fresh), aiAvailable: Boolean(demoKey.get()) });
   },
   async coach(checkId: number): Promise<Coach> {
     const p = currentPatient();
@@ -145,7 +145,7 @@ export const demoApi = {
     return s.coach[checkId];
   },
   async readReport(file: { data: string; mediaType: string }): Promise<Reading> {
-    if (!(await demoSampler())) return fail('Reading printouts needs AI, which isn’t available in this view. Type the numbers in instead.', 503);
+    if (!(await demoAiAvailable())) return fail('Reading printouts needs AI. In the demo, add an Anthropic key in the care-team settings, or type the numbers in.', 503);
     const bytes = Uint8Array.from(atob(file.data), (ch) => ch.charCodeAt(0));
     const out = await demoReadReport(new Blob([bytes], { type: file.mediaType }));
     return out ?? fail('We couldn’t read that printout. Try a clearer photo, or type the numbers in.', 502);
@@ -226,8 +226,15 @@ export const demoApi = {
     log(STAFF.name, 'note.generate', id);
     return (p.checks.length ? await demoNote(p, followUpsFor(id)) : null) ?? templateNote(p);
   },
-  settings: (): Promise<ClinicSettings> => delay({ aiEnabled: true, aiKeySource: 'server', aiKeyHint: null }),
-  setAiKey: (): Promise<ClinicSettings> => fail('In the demo, AI runs through Claude, so there is no key to set.'),
+  async settings(): Promise<ClinicSettings> {
+    const k = demoKey.get();
+    return { aiEnabled: await demoAiAvailable(), aiKeySource: k ? 'clinic' : (await demoAiAvailable()) ? 'server' : null, aiKeyHint: k ? `…${k.slice(-4)}` : null };
+  },
+  async setAiKey(key: string): Promise<ClinicSettings> {
+    if (key && !/^sk-ant-[A-Za-z0-9_-]{20,200}$/.test(key.trim())) return fail('That doesn’t look like an Anthropic API key. It starts with sk-ant-.');
+    demoKey.set(key.trim());
+    return this.settings();
+  },
   staffList: () => delay([{ ...STAFF, createdAt: DEMO_DATES[0] }]),
   addStaff: (): Promise<Staff> => fail('Adding staff isn’t available in the demo.'),
   audit: () => delay(load().audit.slice(0, 100)),

@@ -1,0 +1,46 @@
+name: Test and publish phone demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix server
+      - run: npm ci --prefix web
+      - run: npm test --prefix server
+      - run: npm test --prefix web
+      - run: npm run build --prefix web
+
+  pages:
+    # Builds the phone demo (in-browser data, real camera) and publishes it to the gh-pages branch,
+    # served at https://anikaagra.github.io/startup/
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix web
+      - run: npm run fetch-model --prefix web
+      - run: npm run build:pages --prefix web
+      - run: touch web/dist-pages/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: web/dist-pages
+          publish_branch: gh-pages
+          force_orphan: true
