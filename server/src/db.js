@@ -23,6 +23,32 @@ export function openDb(file = process.env.RISE_DB ?? 'rise.db') {
       below_norm INTEGER NOT NULL, norm_cutoff INTEGER NOT NULL, norm_band TEXT NOT NULL,
       weight_lb REAL, body_comp_method TEXT, asm_kg REAL, grip_kg REAL, domains TEXT, reasons TEXT, body_comp_detail TEXT
     );
+    CREATE TABLE IF NOT EXISTS staff (
+      id TEXT PRIMARY KEY, provider_code TEXT NOT NULL REFERENCES providers(code), email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'nurse', password_hash TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS tokens (
+      token_hash TEXT PRIMARY KEY, kind TEXT NOT NULL, subject_id TEXT NOT NULL,
+      created_at TEXT NOT NULL, expires_at TEXT, last_used_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS tokens_subject ON tokens(kind, subject_id);
+    CREATE TABLE IF NOT EXISTS link_codes (
+      code_hash TEXT PRIMARY KEY, patient_id TEXT NOT NULL REFERENCES patients(id), expires_at TEXT NOT NULL, created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL REFERENCES patients(id), check_id INTEGER,
+      staff_id TEXT NOT NULL, kind TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS follow_ups_patient ON follow_ups(patient_id);
+    CREATE TABLE IF NOT EXISTS audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT,
+      action TEXT NOT NULL, patient_id TEXT, provider_code TEXT, detail TEXT
+    );
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS ai_outputs (
+      kind TEXT NOT NULL, subject_id TEXT NOT NULL, input_hash TEXT NOT NULL, output TEXT NOT NULL,
+      model TEXT, created_at TEXT NOT NULL, PRIMARY KEY (kind, subject_id, input_hash)
+    );
   `);
   // Add columns introduced after the first release to existing databases.
   const add = (table, col, type) => {
@@ -30,6 +56,8 @@ export function openDb(file = process.env.RISE_DB ?? 'rise.db') {
     if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
   };
   add('patients', 'height_in', 'REAL');
+  add('patients', 'deleted_at', 'TEXT');
+  add('providers', 'created_at', 'TEXT');
   for (const [c, t] of [['weight_lb', 'REAL'], ['body_comp_method', 'TEXT'], ['asm_kg', 'REAL'], ['grip_kg', 'REAL'], ['domains', 'TEXT'], ['reasons', 'TEXT'], ['body_comp_detail', 'TEXT']]) add('checks', c, t);
   return db;
 }
@@ -47,6 +75,11 @@ export function patientFromRow(r) {
   };
 }
 
+export function followUpFromRow(r) {
+  return { id: r.id, patientId: r.patient_id, checkId: r.check_id, staffId: r.staff_id, staffName: r.staff_name ?? null,
+    kind: r.kind, note: r.note, createdAt: r.created_at };
+}
+
 export function checkFromRow(r) {
   return {
     id: r.id, createdAt: r.created_at, stands: r.stands, durationSec: r.duration_sec, confidence: r.confidence,
@@ -60,7 +93,7 @@ export function checkFromRow(r) {
 }
 
 export function insertCheck(db, patientId, c, r) {
-  db.prepare(`INSERT INTO checks (patient_id, created_at, stands, duration_sec, confidence, slept_poorly, pain_or_ill, lean_mass_lb,
+  return db.prepare(`INSERT INTO checks (patient_id, created_at, stands, duration_sec, confidence, slept_poorly, pain_or_ill, lean_mass_lb,
     body_fat_pct, method, state, flagged, provider_flag, verdict, action, reason, retest_date, below_norm, norm_cutoff, norm_band,
     weight_lb, body_comp_method, asm_kg, grip_kg, domains, reasons, body_comp_detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     patientId, r.createdAt, c.stands, c.durationSec ?? 30, c.confidence ?? null, c.sleptPoorly ? 1 : 0, c.painOrIll ? 1 : 0,

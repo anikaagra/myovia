@@ -37,3 +37,17 @@ export const MIN_WEIGHT_CHANGE = { lb: 4, fraction: 0.02 };
 
 // Grip: change from the patient's own first grip. Draft; typical test-retest variation is roughly 5-10%.
 export const GRIP_DROP = { watch: 0.1, checkin: 0.2 };
+
+// Protein and exercise while losing weight on a GLP-1. Source: Mozaffarian et al. 2025 joint advisory
+// (ACLM, ASN, OMA, The Obesity Society), "Nutritional priorities to support GLP-1 therapy for obesity".
+// 1.2–1.6 g/kg/day during active weight loss; the advisory notes actual weight can overstate needs at high
+// body weight, and ~1.5 g/kg of lean mass may fit best. Absolute range suggested: 80–120 g/day.
+// Strength training at least 3 days a week, plus at least 150 minutes a week of moderate aerobic activity.
+export const PROTEIN = {
+  gPerKg: [1.2, 1.6],
+  gPerKgLean: 1.5,
+  referenceBmi: 25,
+  absolute: [80, 120],
+  source: '2025 joint advisory on nutrition with GLP-1 therapy (ACLM, ASN, OMA, The Obesity Society)',
+};
+export const EXERCISE = { strengthDaysPerWeek: 3, aerobicMinutesPerWeek: 150 };

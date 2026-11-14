@@ -2,7 +2,9 @@ import { normFor, gripCutoff, asmCutoff, LEAN_SHARE, MIN_WEIGHT_CHANGE, GRIP_DRO
 
 // Draft clinical rules. Thresholds must be set with clinical advisors before launch.
 export const TIERS = {
-  higher: { checkEveryDays: 14, watchDrop: 1, checkinDrop: 3 },
+  // A drop of 1 stand is within test-retest noise for the 30-second chair stand, so Watch starts at 2 for everyone.
+  // Higher-risk patients check twice as often and reach Check in sooner.
+  higher: { checkEveryDays: 14, watchDrop: 2, checkinDrop: 3 },
   standard: { checkEveryDays: 28, watchDrop: 2, checkinDrop: 4 },
 };
 export const STATE_RANK = { checkin: 0, watch: 1, steady: 2 };

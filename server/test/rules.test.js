@@ -51,9 +51,11 @@ test('drop of 4 from baseline is check in straight away', () => {
   assert.equal(run(maria, [15, 11]).r.state, 'checkin');
 });
 
-test('higher tier is more sensitive', () => {
-  assert.equal(run({ ...maria, tier: 'higher' }, [14, 13]).r.state, 'watch');
+test('higher tier reaches check in sooner, but a 1-stand drop is noise for everyone', () => {
+  assert.equal(run({ ...maria, tier: 'higher' }, [14, 13]).r.state, 'steady');
+  assert.equal(run({ ...maria, tier: 'higher' }, [14, 12]).r.state, 'watch');
   assert.equal(run({ ...maria, tier: 'higher' }, [14, 11]).r.state, 'checkin');
+  assert.equal(run(maria, [14, 11]).r.state, 'watch');
 });
 
 test('readiness flag never flags the provider and retests in a week', () => {
