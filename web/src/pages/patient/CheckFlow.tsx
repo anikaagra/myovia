@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Screen, ErrorNote } from '../../components/Screen';
 import { CameraStage, type Capture } from '../../components/CameraStage';
-import { api, IS_DEMO } from '../../lib/api';
+import { api, IS_DEMO, SIMULATE_CAMERA } from '../../lib/api';
 import { DemoCamera } from '../../components/DemoCamera';
 import { BodyScanCapture, type PhoneScan } from '../../components/BodyScanCapture';
 import { BodyCompImport } from '../../components/BodyCompImport';
@@ -48,7 +48,7 @@ export function CheckFlow() {
   const [gripUnit, setGripUnit] = useState<'kg' | 'lb'>('kg');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [scanMode, setScanMode] = useState<'choose' | 'phone' | 'import' | 'photo' | 'review'>('choose');
-  const [cameraMode, setCameraMode] = useState<CameraMode>(IS_DEMO ? 'simulated' : 'real');
+  const [cameraMode, setCameraMode] = useState<CameraMode>(SIMULATE_CAMERA ? 'simulated' : 'real');
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [importNotes, setImportNotes] = useState<string[]>([]);
   const fromPhone = (r: PhoneScan) => {

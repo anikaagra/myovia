@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { measureScan, type ScanMeasurements, type Sex, type View } from '../lib/bodyScan/geometry';
 import { analyzePhoto, fileToCanvas } from '../lib/bodyScan/segment';
-import { say, stopSpeaking } from '../lib/speech';
-import { IS_DEMO } from '../lib/api';
+import { say, stopSpeaking, unlockSpeech } from '../lib/speech';
+import { useScanChecks } from '../lib/useLiveChecks';
+import { requestMotionAccess } from '../lib/deviceSensors';
+import { SIMULATE_CAMERA } from '../lib/api';
 import { navyBodyFat } from '../lib/bodyScan/geometry';
 
 export type PhoneScan = ScanMeasurements & { weightLb: number; leanMassLb: number };
@@ -25,6 +27,8 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timers = useRef<number[]>([]);
+  const [armed, setArmed] = useState<Shot | null>(null);
+  const live = useScanChecks(videoRef, phase === 'camera', shot);
 
   const stopCamera = () => { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; };
   useEffect(() => () => { stopCamera(); timers.current.forEach(clearTimeout); stopSpeaking(); }, []);
@@ -67,7 +71,7 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
 
   async function startCamera() {
     const e = ready(); if (e) return setErr(e);
-    if (IS_DEMO) return demoScan();
+    if (SIMULATE_CAMERA) return demoScan();
     setErr(null); setShot('front'); photos.current = {}; setPhase('camera');
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
@@ -80,19 +84,28 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
     }
   }
 
+  function capture(which: Shot) {
+    const v = videoRef.current!;
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d')!.drawImage(v, 0, 0);
+    photos.current[which] = c;
+    say('Got it.', { force: true });
+    if (which === 'front') { setShot('side'); window.setTimeout(() => say('Now turn so your side faces the phone, arms relaxed.', { force: true }), 900); }
+    else { stopCamera(); process(); }
+  }
+
+  // After the countdown, the photo is taken the moment every check has passed for a second (like Spren's
+  // red-to-green capture), so a blurry or badly framed photo is never used.
+  useEffect(() => {
+    if (!armed) return;
+    if (live.readyMs >= 1000 || !live.trackerOk) { const w = armed; setArmed(null); capture(w); }
+  }, [armed, live.readyMs, live.trackerOk]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function takeTimed(which: Shot) {
     say(which === 'front' ? 'Face the phone, arms slightly out. Taking the photo in 10 seconds.' : 'Turn so your side faces the phone. Arms relaxed. Taking the photo in 10 seconds.', { force: true });
     for (let i = TIMER_S; i >= 1; i--) timers.current.push(window.setTimeout(() => { setCount(i); if (i <= 3) say(String(i), { force: true }); }, (TIMER_S - i) * 1000));
-    timers.current.push(window.setTimeout(() => {
-      setCount(null);
-      const v = videoRef.current!;
-      const c = document.createElement('canvas');
-      c.width = v.videoWidth; c.height = v.videoHeight;
-      c.getContext('2d')!.drawImage(v, 0, 0);
-      photos.current[which] = c;
-      if (which === 'front') { setShot('side'); say('Got it. Now turn to your side.', { force: true }); }
-      else { stopCamera(); process(); }
-    }, TIMER_S * 1000));
+    timers.current.push(window.setTimeout(() => { setCount(null); setArmed(which); }, TIMER_S * 1000));
   }
 
   async function onFiles(which: Shot, files: FileList | null) {
@@ -116,7 +129,7 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
         <dt>Hips</dt><dd className="rise-num">{result.hipIn} in</dd>
         <dt>Weight</dt><dd className="rise-num">{result.weightLb} lb</dd>
       </dl>
-      {IS_DEMO && <p className="note">Demo: these are example measurements. In the app they come from your two photos.</p>}
+      {SIMULATE_CAMERA && <p className="note">Demo: these are example measurements. In the app they come from your two photos.</p>}
       <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline in two photos. It can be a few percent off from a DEXA scan, so we compare it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
       <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => onDone(result)}>Use these numbers</button>
       <button className="rise-btn rise-btn--quiet" onClick={() => { setResult(null); setPhase('intro'); }}>Scan again</button>
@@ -127,17 +140,25 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
 
   if (phase === 'camera') return (
     <div className="stack" style={{ gap: 16 }}>
-      <div className="cam">
-        <video ref={videoRef} playsInline muted autoPlay aria-label="Camera preview" />
+      <div className={`cam${live.current ? ' cam--fix' : ''}`}>
+        <video ref={videoRef} playsInline muted autoPlay aria-label="Camera preview" className="mirror" />
         <svg className="overlay" viewBox="0 0 300 400" preserveAspectRatio="none" aria-hidden="true" style={{ transform: 'none' }}>
           <rect x="70" y="20" width="160" height="360" rx="20" fill="none" stroke="var(--on-brand)" strokeWidth="3" strokeDasharray="10 8" opacity=".8" />
         </svg>
         <span className="cam__badge">{shot === 'front' ? 'Photo 1 of 2: front' : 'Photo 2 of 2: side'}</span>
         {count != null && <div className="cam__count" aria-live="assertive">{count}</div>}
+        {live.current && <div className="cam__fix" aria-hidden="true">{live.current.fix}</div>}
       </div>
+      <ul className="rise-checks rise-checks--compact" aria-live="polite">
+        {live.checks.map((c) => (
+          <li key={c.id} className={`rise-check rise-check--${c.status}`}>{c.status === 'fix' ? c.fix : c.label}
+            <span className="rise-check__state">{c.status === 'ok' ? 'Done' : c.status === 'fix' ? 'Fix' : '…'}</span></li>
+        ))}
+      </ul>
+      {armed && <p className="note" role="status">{live.current ? 'Waiting for the checks above. The photo is taken as soon as they pass.' : 'Hold still…'}</p>}
       <p className="rise-body-lg">{shot === 'front' ? 'Face the phone with your arms a little away from your sides. Fit your whole body inside the dashed outline.' : 'Turn so your side faces the phone, arms relaxed at your sides.'}</p>
-      <button className="rise-btn rise-btn--primary rise-btn--block" disabled={count != null} onClick={() => takeTimed(shot)}>{count != null ? 'Get in position…' : `Take ${shot} photo in ${TIMER_S} seconds`}</button>
-      <button className="rise-btn rise-btn--quiet" onClick={() => { stopCamera(); timers.current.forEach(clearTimeout); setCount(null); setPhase('intro'); }}>Cancel</button>
+      <button className="rise-btn rise-btn--primary rise-btn--block" disabled={count != null || armed != null} onClick={() => takeTimed(shot)}>{count != null || armed ? 'Get in position…' : `Take ${shot} photo in ${TIMER_S} seconds`}</button>
+      <button className="rise-btn rise-btn--quiet" onClick={() => { stopCamera(); timers.current.forEach(clearTimeout); setCount(null); setArmed(null); setPhase('intro'); }}>Cancel</button>
     </div>
   );
 
@@ -164,7 +185,7 @@ export function BodyScanCapture({ sex, heightIn, weightLb, onWeight, onDone, onC
         <div className="field"><label className="rise-label" htmlFor="scan-height">Height (in)</label><input id="scan-height" className="rise-num" inputMode="numeric" value={height} onChange={(e) => { setErr(null); setHeight(e.target.value.replace(/\D/g, '')); }} /></div>
       </div>
       {err && <p role="alert" className="error-note">{err}</p>}
-      <button className="rise-btn rise-btn--primary rise-btn--block" onClick={startCamera}>Start the scan</button>
+      <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => { unlockSpeech(); void requestMotionAccess(); void startCamera(); }}>Start the scan</button>
       <button className="rise-btn rise-btn--secondary rise-btn--block" onClick={() => { const e = ready(); if (e) return setErr(e); setErr(null); photos.current = {}; setPhase('upload'); }}>Upload two photos instead</button>
       <button className="rise-btn rise-btn--quiet" onClick={onCancel}>Choose another way</button>
       <p className="rise-caption" style={{ margin: 0 }}>Photos are measured on this phone and never uploaded.</p>

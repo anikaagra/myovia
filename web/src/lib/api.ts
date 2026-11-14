@@ -3,6 +3,8 @@ import { demoApi } from './demoApi';
 import { session, staffSession } from './session';
 
 export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
+/** The demo running inside a Claude artifact, where the camera and pose model aren't available: simulate them. */
+export const SIMULATE_CAMERA = IS_DEMO && import.meta.env.VITE_ROUTER === 'memory';
 
 export class ApiError extends Error { constructor(m: string, public status: number, public code?: string) { super(m); } }
 

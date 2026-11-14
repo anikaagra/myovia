@@ -127,31 +127,96 @@ function toChecks(fixes: Record<CheckId, string | null>) {
  * in a row to clear. Stops the list flickering when one frame is dark or blurry.
  */
 export class CheckSmoother {
-  private fails = new Map<CheckId, number>();
-  private passes = new Map<CheckId, number>();
-  private failing = new Map<CheckId, string>();
+  private fails = new Map<string, number>();
+  private passes = new Map<string, number>();
+  private failing = new Map<string, string>();
   constructor(private failAfter = 3, private passAfter = 2) {}
 
-  update(raw: ReturnType<typeof evaluateFrame>) {
+  /** Works for any list of checks (sit-to-stand or body scan); keeps their ids, labels and order. */
+  update(raw: { checks: Check[] }) {
     // A check only counts as done after it has passed `passAfter` times in a row, so a slow phone that
     // analyses one frame a second can't start recording on a couple of lucky frames.
-    const fixes = {} as Record<CheckId, string | null>;
-    const pending = new Set<CheckId>();
+    const pending = new Set<string>();
     for (const c of raw.checks) {
       if (c.status !== 'ok') {
         this.passes.set(c.id, 0);
         const n = (this.fails.get(c.id) ?? 0) + 1; this.fails.set(c.id, n);
-        if (n >= this.failAfter || this.failing.has(c.id)) this.failing.set(c.id, c.fix);
+        if (n >= this.failAfter || this.failing.has(c.id)) this.failing.set(c.id, c.fix || this.failing.get(c.id) || '');
         else pending.add(c.id);
       } else {
         this.fails.set(c.id, 0);
         const n = (this.passes.get(c.id) ?? 0) + 1; this.passes.set(c.id, n);
         if (n >= this.passAfter) this.failing.delete(c.id); else pending.add(c.id);
       }
-      fixes[c.id] = this.failing.get(c.id) ?? null;
     }
-    const out = toChecks(fixes);
-    const checks = out.checks.map((c) => (c.status === 'ok' && pending.has(c.id) ? { ...c, status: 'wait' as const } : c));
-    return { checks, current: out.current, ready: out.ready && pending.size === 0 };
+    let shown = false;
+    const checks: Check[] = raw.checks.map((c) => {
+      const fix = this.failing.get(c.id);
+      if (fix != null) { const status: CheckStatus = shown ? 'wait' : 'fix'; shown = true; return { ...c, fix, status }; }
+      return { ...c, fix: '', status: pending.has(c.id) ? 'wait' : 'ok' };
+    });
+    const current = checks.find((c) => c.status === 'fix') ?? null;
+    return { checks, current, ready: !current && pending.size === 0 };
   }
+}
+
+// ---------- Body scan photos ----------
+export type ScanCheckId = 'lens' | 'light' | 'frame' | 'pose' | 'alone' | 'steady';
+const SCAN_LABELS: Record<ScanCheckId, string> = {
+  lens: 'Lens is clean', light: 'Even light from the front', frame: 'Head to feet in view', pose: 'Pose', alone: 'Only you in view', steady: 'Phone is upright and steady',
+};
+
+const deg = (a: Point, b: Point, c: Point) => {
+  const v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y };
+  const m = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
+  return m ? (Math.acos(Math.max(-1, Math.min(1, (v1.x * v2.x + v1.y * v2.y) / m))) * 180) / Math.PI : NaN;
+};
+
+/** Front photo: A-pose (arms 15-50° from the body, like Bodygram's 25-35° guide). Side photo: side-on to the phone. */
+export function scanPoseFix(lm: Point[] | null, shot: 'front' | 'side'): string | null {
+  if (!lm) return null;
+  const ls = lm[LM.lShoulder], rs = lm[LM.rShoulder], lh = lm[LM.lHip], rh = lm[LM.rHip], lw = lm[15], rw = lm[16];
+  if (!ls || !rs || !lh || !rh) return null;
+  const torso = Math.hypot((ls.x + rs.x) / 2 - (lh.x + rh.x) / 2, (ls.y + rs.y) / 2 - (lh.y + rh.y) / 2);
+  const ratio = torso ? Math.abs(ls.x - rs.x) / torso : 0;
+  if (shot === 'side') return ratio > 0.35 ? 'Turn so your side faces the phone.' : null;
+  if (ratio < 0.35) return 'Face the phone.';
+  if (!lw || !rw || (lw.visibility ?? 1) < 0.5 || (rw.visibility ?? 1) < 0.5) return null;
+  const a = [deg(lw, ls, lh), deg(rw, rs, rh)].filter(Number.isFinite);
+  if (!a.length) return null;
+  if (Math.min(...a) < 15) return 'Move your arms a little away from your sides.';
+  if (Math.max(...a) > 55) return 'Lower your arms a little, to about the height of a small A.';
+  return null;
+}
+
+export function scanFrameFix(lm: Point[] | null, t = THRESHOLDS): string | null {
+  if (!lm || !lm.length) return 'Step into view, about 6 to 8 feet from the phone.';
+  const head = lm[LM.nose], feet = [lm[LM.lAnkle], lm[LM.rAnkle]];
+  const vis = (p: Point | undefined) => !!p && (p.visibility ?? 1) >= t.minVisibility;
+  if (!vis(head) || !feet.some(vis)) return 'Move back until your head and feet are both in view.';
+  // Leave room above the head (the top of the head sits about a face-height above the nose) and below the feet.
+  if (head.y < 0.1) return 'Move back a step. Your head is too close to the top.';
+  if (feet.filter(vis).some((f) => f.y > 0.97)) return 'Move back a step. Your feet are at the bottom edge.';
+  const span = Math.max(...feet.filter(vis).map((f) => f.y)) - head.y;
+  if (span < 0.5) return 'Move one step closer.';
+  return null;
+}
+
+export function evaluateScanFrame(f: FrameInput, shot: 'front' | 'side', t = THRESHOLDS) {
+  const fixes: Record<ScanCheckId, string | null> = {
+    lens: lensFix(f, t), light: lightFix(f, t), frame: scanFrameFix(f.landmarks, t), pose: null,
+    alone: (f.people ?? 1) > 1 ? 'Only you should be in view. Ask others to step out of the picture.' : null,
+    steady: steadyFix(f, t),
+  };
+  fixes.pose = fixes.frame ? (shot === 'front' ? 'Face the phone with your arms a little away from your sides.' : 'Turn so your side faces the phone.') : scanPoseFix(f.landmarks, shot);
+  let shown = false;
+  const checks = (Object.keys(SCAN_LABELS) as ScanCheckId[]).map((id) => {
+    const fix = fixes[id];
+    let status: CheckStatus = 'ok';
+    if (fix) { status = shown ? 'wait' : 'fix'; shown = true; }
+    const label = id === 'pose' ? (shot === 'front' ? 'Facing the phone, arms slightly out' : 'Side to the phone') : SCAN_LABELS[id];
+    return { id: id as unknown as CheckId, label, fix: fix ?? '', status };
+  });
+  const current = checks.find((c) => c.status === 'fix') ?? null;
+  return { checks, ready: !current, current };
 }

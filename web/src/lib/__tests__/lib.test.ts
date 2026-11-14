@@ -241,3 +241,29 @@ describe('CheckSmoother', () => {
     expect(s.update(evaluateFrame(good)).ready).toBe(true);
   });
 });
+
+import { scanPoseFix, scanFrameFix } from '../cameraChecks';
+describe('body scan photo checks', () => {
+  // Front-facing standing pose with arms at a chosen angle from the body.
+  const front = (armDeg: number) => {
+    const lm = Array.from({ length: 33 }, () => P(0.5, 0.5));
+    lm[0] = P(0.5, 0.15); lm[11] = P(0.42, 0.25); lm[12] = P(0.58, 0.25); lm[23] = P(0.45, 0.5); lm[24] = P(0.55, 0.5);
+    lm[27] = P(0.45, 0.9); lm[28] = P(0.55, 0.9);
+    const r = (armDeg * Math.PI) / 180, len = 0.25;
+    lm[15] = P(0.42 - Math.sin(r) * len, 0.25 + Math.cos(r) * len); lm[16] = P(0.58 + Math.sin(r) * len, 0.25 + Math.cos(r) * len);
+    return lm;
+  };
+  it('asks for arms slightly out in the front photo', () => {
+    expect(scanPoseFix(front(3), 'front')).toMatch(/away from your sides/);
+    expect(scanPoseFix(front(30), 'front')).toBeNull();
+    expect(scanPoseFix(front(80), 'front')).toMatch(/Lower your arms/);
+  });
+  it('asks to turn sideways for the side photo', () => {
+    expect(scanPoseFix(front(30), 'side')).toMatch(/side faces/);
+  });
+  it('needs head and feet in view with room at the edges', () => {
+    expect(scanFrameFix(front(30))).toBeNull();
+    const tight = front(30); tight[0] = P(0.5, 0.04);
+    expect(scanFrameFix(tight)).toMatch(/too close to the top/);
+  });
+});
