@@ -164,7 +164,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
         <dt>Hips</dt><dd className="rise-num">{result.hipIn} in</dd>
         <dt>Weight</dt><dd className="rise-num">{result.weightLb} lb</dd>
       </dl>
-      {SIMULATE_CAMERA && <p className="note">Demo: these are example measurements. In the app they come from your two photos.</p>}
+      {SIMULATE_CAMERA && <p className="note">Demo: these are example measurements. In the app they come from your front and side photos.</p>}
       <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline. A phone scan can be a few points off a DEXA scan, so Rise compares it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
       <p className="rise-caption" style={{ margin: 0 }}>Measured from {result.photosUsed} photo{result.photosUsed === 1 ? '' : 's'} and checked against what's typical for your age, height and weight. Your trend over several scans is more reliable than any one scan.</p>
       {result.estimate.warning ? <>
