@@ -1,25 +1,16 @@
 import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { View } from './geometry';
+import { createWithFallbacks } from '../visionFiles';
 
-const LOCAL_MODEL = '/models/pose_landmarker_lite.task';
-const REMOTE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 let loading: Promise<PoseLandmarker> | null = null;
 
 /** Pose model in still-image mode with a person segmentation mask. Runs on the device; photos are never uploaded. */
 function loadImagePose(): Promise<PoseLandmarker> {
   if (!loading) {
-    loading = (async () => {
-      const { FilesetResolver, PoseLandmarker } = await import('@mediapipe/tasks-vision');
-      const files = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
-      let lastErr: unknown;
-      for (const [modelAssetPath, delegate] of [[LOCAL_MODEL, 'GPU'], [REMOTE_MODEL, 'GPU'], [REMOTE_MODEL, 'CPU']] as const) {
-        try {
-          return await PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath, delegate }, runningMode: 'IMAGE', numPoses: 1, outputSegmentationMasks: true });
-        } catch (e) { lastErr = e; }
-      }
-      loading = null;
-      throw lastErr;
-    })();
+    loading = createWithFallbacks(async (files, modelAssetPath, delegate) => {
+      const { PoseLandmarker } = await import('@mediapipe/tasks-vision');
+      return PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath, delegate }, runningMode: 'IMAGE', numPoses: 1, outputSegmentationMasks: true });
+    }).catch((e) => { loading = null; throw e; });
   }
   return loading;
 }

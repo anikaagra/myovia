@@ -7,10 +7,13 @@ import { DemoCamera } from '../../components/DemoCamera';
 import { BodyScanCapture, type PhoneScan } from '../../components/BodyScanCapture';
 import { BodyCompImport } from '../../components/BodyCompImport';
 import type { ImportedScan } from '../../lib/bodyScan/importParser';
-import { session } from '../../lib/session';
-import { say } from '../../lib/speech';
+import { say, unlockSpeech } from '../../lib/speech';
+import { requestMotionAccess } from '../../lib/deviceSensors';
+import { ReportPhoto } from '../../components/ReportPhoto';
+import type { Reading } from '../../lib/types';
 
 type Step = 'readiness' | 'scan' | 'grip' | 'setup' | 'camera' | 'manual' | 'saving';
+type CameraMode = 'real' | 'simulated';
 import type { BodyCompMethod, Patient } from '../../lib/types';
 
 const METHODS: [BodyCompMethod, string][] = [
@@ -44,7 +47,8 @@ export function CheckFlow() {
   const [grip, setGrip] = useState('');
   const [gripUnit, setGripUnit] = useState<'kg' | 'lb'>('kg');
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [scanMode, setScanMode] = useState<'choose' | 'phone' | 'import' | 'review'>('choose');
+  const [scanMode, setScanMode] = useState<'choose' | 'phone' | 'import' | 'photo' | 'review'>('choose');
+  const [cameraMode, setCameraMode] = useState<CameraMode>(IS_DEMO ? 'simulated' : 'real');
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [importNotes, setImportNotes] = useState<string[]>([]);
   const fromPhone = (r: PhoneScan) => {
@@ -62,8 +66,23 @@ export function CheckFlow() {
     setImportNotes([`Imported${r.sourceName ? ` from ${r.sourceName}` : ''}${r.date ? `, measured ${r.date}` : ''}. Check the numbers and the device, then continue.`, ...r.warnings]);
     setScanMode('review');
   };
+  const fromReading = (r: Reading) => {
+    if (r.weightLb != null) setWeight(String(r.weightLb));
+    if (r.leanMassLb != null) setLean(String(r.leanMassLb));
+    if (r.bodyFatPct != null) setFat(String(r.bodyFatPct));
+    if (r.asmKg != null) setAsm(String(r.asmKg));
+    setMethod(r.kind === 'other' ? '' : r.kind);
+    setDetail({ source: 'photo-read', from: r.device, measuredOn: r.measuredOn, readConfidence: r.confidence });
+    setImportNotes([
+      `Read from your ${r.device ?? 'printout'}${r.measuredOn ? `, measured ${r.measuredOn}` : ''}. Check every number against the printout, then continue.`,
+      ...(r.confidence !== 'high' ? ['Some numbers were hard to read. Please check them carefully.'] : []),
+      ...(r.skeletalMuscleKg != null && r.leanMassLb == null ? ['Your printout shows skeletal muscle mass, which is different from lean mass. Enter lean mass (fat-free mass) if it is printed.'] : []),
+      ...(r.notes ? [r.notes] : []), ...r.warnings,
+    ]);
+    setScanMode('review');
+  };
   useEffect(() => {
-    api.getPatient(session.get()!).then((p) => {
+    api.me().then((p) => {
       setPatient(p);
       const lastScan = [...p.checks].reverse().find((c) => c.bodyCompMethod);
       if (lastScan?.bodyCompMethod) setMethod(lastScan.bodyCompMethod);
@@ -75,18 +94,17 @@ export function CheckFlow() {
   const [manual, setManual] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
-  const save = useCallback(async (c: Capture, captureMethod: 'phone-video' | 'demo') => {
+  const save = useCallback(async (c: Capture, captureMethod: 'phone-video' | 'demo' | 'manual') => {
     setStep('saving');
     try {
-      const r = await api.submitCheck(session.get()!, {
+      const r = await api.submitCheck({
         ...c, method: captureMethod, sleptPoorly, painOrIll,
         weightLb: weight ? Number(weight) : null, leanMassLb: lean ? Number(lean) : null, bodyFatPct: fat ? Number(fat) : null,
         asmKg: asm ? Number(asm) : null, bodyCompMethod: lean || fat || asm ? method || null : null, gripKg: hasGrip ? gripKg : null,
         bodyCompDetail: lean || fat ? detail : null,
       });
-      const last = r.patient.checks[r.patient.checks.length - 1];
-      nav(`/result/${last.id}`, { replace: true });
-    } catch (e) { setErr((e as Error).message); setStep(captureMethod === 'demo' ? 'manual' : 'camera'); }
+      nav(`/result/${r.id}`, { replace: true });
+    } catch (e) { setErr((e as Error).message); setStep(captureMethod === 'manual' ? 'manual' : 'camera'); }
   }, [sleptPoorly, painOrIll, lean, fat, weight, asm, method, hasGrip, gripKg, detail, nav]);
 
   const onCapture = useCallback((c: Capture) => save(c, 'phone-video'), [save]);
@@ -116,13 +134,14 @@ export function CheckFlow() {
 
   if (step === 'scan' && scanMode !== 'review') return (
     <Screen back={{ to: '/', label: 'Cancel' }} footer={scanMode === 'choose' ? <button className="rise-btn rise-btn--quiet" onClick={() => { setErr(null); setStep('grip'); }}>Skip body scan this time</button> : undefined}>
-      <div className="stack"><div className="rise-label">Step 1 of 3 · Muscle and fat</div><h1 className="display">{scanMode === 'phone' ? 'Scan with your phone' : scanMode === 'import' ? 'Import a body scan' : 'Add your body scan'}</h1></div>
+      <div className="stack"><div className="rise-label">Step 1 of 3 · Muscle and fat</div><h1 className="display">{scanMode === 'phone' ? 'Scan with your phone' : scanMode === 'import' ? 'Import a body scan' : scanMode === 'photo' ? 'Photo of your printout' : 'Add your body scan'}</h1></div>
       {scanMode === 'choose' && (
         <>
           <p className="rise-body-lg">We compare how much of the weight you lose is muscle, not just how much you lose. Choose how to add today's numbers.</p>
           <div className="stack">
             <button className="rise-choice" onClick={() => setScanMode('phone')}><b>Scan with this phone</b><span className="rise-caption" style={{ marginLeft: 'auto' }}>2 photos</span></button>
-            <button className="rise-choice" onClick={() => setScanMode('import')}><b>Import from a scale, InBody or DEXA</b><span className="rise-caption" style={{ marginLeft: 'auto' }}>CSV file</span></button>
+            <button className="rise-choice" onClick={() => setScanMode('photo')}><b>Photo of an InBody or DEXA printout</b><span className="rise-caption" style={{ marginLeft: 'auto' }}>AI reads it</span></button>
+            <button className="rise-choice" onClick={() => setScanMode('import')}><b>Import a file from a smart scale</b><span className="rise-caption" style={{ marginLeft: 'auto' }}>CSV</span></button>
             <button className="rise-choice" onClick={() => { setDetail({ source: 'typed' }); setImportNotes([]); setScanMode('review'); }}><b>Type the numbers in</b></button>
           </div>
           {lastScan?.bodyCompMethod && <p className="rise-caption" style={{ margin: 0 }}>Last time you used: {METHODS.find(([v]) => v === lastScan.bodyCompMethod)?.[1]}. Using the same way each time gives the most reliable comparison.</p>}
@@ -130,6 +149,7 @@ export function CheckFlow() {
       )}
       {scanMode === 'phone' && <BodyScanCapture sex={patient?.sex ?? 'female'} heightIn={patient?.heightIn ?? null} weightLb={weight} onWeight={setWeight} onDone={fromPhone} onCancel={() => setScanMode('choose')} />}
       {scanMode === 'import' && <BodyCompImport onDone={fromImport} onCancel={() => setScanMode('choose')} />}
+      {scanMode === 'photo' && <ReportPhoto onDone={fromReading} onCancel={() => setScanMode('choose')} onTypeInstead={() => { setDetail({ source: 'typed' }); setImportNotes([]); setScanMode('review'); }} />}
     </Screen>
   );
 
@@ -198,14 +218,23 @@ export function CheckFlow() {
 
   if (step === 'setup') return (
     <Screen back={{ to: '/', label: 'Cancel' }} footer={<button className="rise-btn rise-btn--primary rise-btn--block"
-      onClick={() => { say('Getting your camera ready.', { force: true }); setStep('camera'); }}>Open the camera</button>}>
+      onClick={() => { unlockSpeech(); void requestMotionAccess(); say('Getting your camera ready.', { force: true }); setStep('camera'); }}>Open the camera</button>}>
       <div className="stack"><div className="rise-label">Step 3 of 3 · Leg strength</div><h1 className="display">Set up your chair and phone</h1></div>
       <ol className="stack" style={{ margin: 0, paddingLeft: 24 }}>
-        <li>Use a firm chair without arms, about knee height, against a wall.</li>
-        <li>Prop your phone at hip height, 2 to 3 steps away.</li>
-        <li>Turn the chair so your side faces the phone.</li>
-        <li>Turn your volume up. We'll talk you through it.</li>
+        <li>Use a firm chair without arms, about 17 inches high (knee height), against a wall so it can't slide.</li>
+        <li>Prop your phone upright at hip height, 6 to 8 feet away (2 to 3 steps). Lean it on books or a shelf, not in your hand.</li>
+        <li>Turn the chair so your side faces the phone. A half-turn toward it is fine too.</li>
+        <li>Turn your volume up. Rise talks you through it and starts by itself when everything looks right.</li>
       </ol>
+      {IS_DEMO && (
+        <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="rise-label" style={{ marginBottom: 8 }}>Demo camera</legend>
+          <div className="rise-choices" role="radiogroup">
+            <label className="rise-choice"><input type="radio" name="cammode" id="cam-real" checked={cameraMode === 'real'} onChange={() => setCameraMode('real')} /> Use my real camera</label>
+            <label className="rise-choice"><input type="radio" name="cammode" id="cam-sim" checked={cameraMode === 'simulated'} onChange={() => setCameraMode('simulated')} /> Simulate the check</label>
+          </div>
+        </fieldset>
+      )}
       <p className="note">Your video stays on this phone. Only your count is saved.</p>
     </Screen>
   );
@@ -213,7 +242,7 @@ export function CheckFlow() {
   if (step === 'camera') return (
     <Screen back={{ to: '/', label: 'Cancel' }}>
       <ErrorNote message={err} />
-      {IS_DEMO ? <DemoCamera onDone={(c) => save(c, 'demo')} /> : <CameraStage onDone={onCapture} onManual={() => setStep('manual')} />}
+      {cameraMode === 'simulated' ? <DemoCamera onDone={(c) => save(c, 'demo')} /> : <CameraStage onDone={onCapture} onManual={() => setStep('manual')} />}
     </Screen>
   );
 
@@ -221,7 +250,7 @@ export function CheckFlow() {
     <Screen back={{ to: '/', label: 'Cancel' }} footer={<button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => {
       const n = Number(manual);
       if (!Number.isInteger(n) || n < 0 || n > 40) return setErr('Enter a whole number from 0 to 40.');
-      setErr(null); save({ stands: n, confidence: 1, durationSec: 30 }, 'demo');
+      setErr(null); save({ stands: n, confidence: 1, durationSec: 30 }, 'manual');
     }}>Save my count</button>}>
       <div className="stack"><div className="rise-label">Count it yourself</div><h1 className="display">How many times did you stand up?</h1></div>
       <p className="rise-body-lg">Ask someone to time 30 seconds while you stand up and sit down as many times as you can, arms crossed. Count each full stand.</p>

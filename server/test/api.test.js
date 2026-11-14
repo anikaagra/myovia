@@ -121,7 +121,7 @@ test('sign-in rejects a wrong password and limits attempts', async () => {
   assert.equal(bad.status, 401);
   let last;
   for (let i = 0; i < 9; i++) last = await post('/api/staff/login', { email: 'limit@x.test', password: 'nope' });
-  assert.equal(last.status, 400);
+  assert.equal(last.status, 429);
   assert.match((await last.json()).error, /Too many/);
 });
 
@@ -246,4 +246,16 @@ test('calendar reminder', async () => {
   const t = await r.text();
   assert.match(t, /BEGIN:VEVENT/);
   assert.match(t, /RRULE:FREQ=DAILY;INTERVAL=14/);
+});
+
+test('staff can change their password, and admins can remove staff', async () => {
+  const admin = await staffLogin();
+  const added = await (await post('/api/clinic/staff', { name: 'Kim', email: 'kim@demo.rise', password: 'first-password' }, admin)).json();
+  const kim = (await (await post('/api/staff/login', { email: 'kim@demo.rise', password: 'first-password' })).json()).token;
+  assert.equal((await post('/api/staff/password', { current: 'wrong', next: 'second-password' }, kim)).status, 400);
+  assert.equal((await post('/api/staff/password', { current: 'first-password', next: 'second-password' }, kim)).status, 204);
+  assert.equal((await post('/api/staff/login', { email: 'kim@demo.rise', password: 'second-password' })).status, 200);
+  assert.equal((await call('DELETE', `/api/clinic/staff/${added.id}`, { token: admin })).status, 204);
+  assert.equal((await get('/api/clinic/patients', kim)).status, 401, 'removed staff are signed out');
+  assert.equal((await post('/api/staff/login', { email: 'kim@demo.rise', password: 'second-password' })).status, 401);
 });

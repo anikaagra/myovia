@@ -1,0 +1,25 @@
+/* Camera, plan and patient-side additions. */
+.cam video.mirror { transform: scaleX(-1); }
+.cam .overlay .bone { stroke: var(--trace); stroke-width: 4; stroke-linecap: round; opacity: .85; fill: none; }
+.cam .overlay .bone--fix { stroke: var(--watch); }
+.cam--fix { border-color: var(--watch); }
+.cam__fix { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; border-radius: var(--radius-md);
+  background: rgba(10, 35, 66, .82); color: #fff; font: 700 18px/24px var(--font-sans); text-align: center; }
+.cam__debug { position: absolute; left: 6px; top: 6px; right: 6px; padding: 4px 6px; border-radius: 6px; background: rgba(0,0,0,.6);
+  color: #fff; font: 500 11px/14px var(--font-mono); }
+.plan-stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.plan-stat { display: grid; gap: 2px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--tint); }
+.plan-stat__n { font-size: 26px; line-height: 32px; color: var(--ink); }
+.moves, .days { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.moves li { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
+.moves li .rise-caption { grid-column: 1 / -1; }
+.days li { display: grid; grid-template-columns: 48px 1fr; gap: var(--space-3); align-items: baseline; }
+.care-msg { border-left: 4px solid var(--brand); }
+.coach { border-color: var(--line-strong); }
+.coach-loading { margin: 0; }
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.code-input { font-size: 32px; letter-spacing: .3em; text-align: center; }
+.report-preview { width: 100%; max-height: 320px; object-fit: contain; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--paper-raised); }
+.danger { color: var(--act); }
+.danger-fill { background: var(--act) !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

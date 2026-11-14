@@ -5,20 +5,24 @@ import { StatusSignal } from '../../components/StatusSignal';
 import { RiseTrace } from '../../components/RiseTrace';
 import { NextStepCard } from '../../components/NextStepCard';
 import { DomainSummary } from '../../components/DomainSummary';
+import { PlanCard } from '../../components/PlanCard';
 import { api } from '../../lib/api';
-import { session } from '../../lib/session';
 import { fmtDate, signed } from '../../lib/format';
-import type { Patient } from '../../lib/types';
+import type { Coach, Me } from '../../lib/types';
 
 export function Result() {
   const { checkId } = useParams();
-  const [p, setP] = useState<Patient | null>(null);
+  const [p, setP] = useState<Me | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [coach, setCoach] = useState<Coach | null>(null);
+  const [coachLoading, setCoachLoading] = useState(true);
+  useEffect(() => { api.me().then(setP).catch((e: Error) => setErr(e.message)); }, []);
   useEffect(() => {
-    const id = session.get();
-    if (!id) { setErr('Please set up Rise on this phone first.'); return; }
-    api.getPatient(id).then(setP).catch((e: Error) => setErr(e.message));
-  }, []);
+    let live = true;
+    setCoachLoading(true);
+    api.coach(Number(checkId)).then((c) => { if (live) setCoach(c); }).catch(() => undefined).finally(() => { if (live) setCoachLoading(false); });
+    return () => { live = false; };
+  }, [checkId]);
   if (err) return <Screen back={{ to: '/', label: 'Home' }}><ErrorNote message={err} /></Screen>;
   if (!p) return <Screen><p className="muted">Loading your result…</p></Screen>;
 
@@ -48,8 +52,18 @@ export function Result() {
           <p className="rise-caption" style={{ margin: '8px 0 0' }}>Shaded area: typical for your age and sex.</p>
         </div>
       )}
+      {coach?.ai ? (
+        <section className="rise-card stack coach" aria-labelledby="coach-title">
+          <h2 className="rise-title" id="coach-title">What this means for you</h2>
+          <p className="rise-body-lg" style={{ margin: 0 }}>{coach.summary}</p>
+          <p className="rise-body-lg" style={{ margin: 0 }}>{coach.why}</p>
+          {!!coach.tips?.length && <ul className="stack" style={{ margin: 0, paddingLeft: 22 }}>{coach.tips.map((t) => <li key={t}>{t}</li>)}</ul>}
+          <p className="rise-caption" style={{ margin: 0 }}>Written with AI from your results. Your result itself comes from Rise's rules, which your care team can see.</p>
+        </section>
+      ) : coachLoading ? <p className="rise-caption coach-loading" aria-live="polite">Writing a personal note on your result…</p> : null}
       {c.domains && <DomainSummary domains={c.domains} />}
       <NextStepCard state={c.state} action={c.action} reason={c.reason} retestDate={c.retestDate} />
+      {coach?.plan && idx === p.checks.length - 1 && <PlanCard plan={coach.plan} open />}
       {c.flagged && <p className="note">You told us you slept badly or felt unwell today, so we won't change your plan on this check alone.</p>}
       {(c.weightLb != null || c.leanMassLb != null || c.gripKg != null) && (
         <details className="rise-card">

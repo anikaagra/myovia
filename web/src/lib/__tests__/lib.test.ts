@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { RepCounter, angleAt, kneeAngle } from '../repCounter';
-import { evaluateFrame } from '../cameraChecks';
-import { laplacianVariance, meanLuminance, cornerMotion } from '../frameStats';
+import { RepCounter, StandCounter, angleAt, kneeAngle } from '../repCounter';
+import { evaluateFrame, CheckSmoother } from '../cameraChecks';
+import { laplacianVariance, meanLuminance, cornerMotion, lensStats } from '../frameStats';
 
 const P = (x: number, y: number, visibility = 0.9) => ({ x, y, visibility });
 
@@ -95,5 +95,130 @@ describe('frame stats', () => {
     const b = new Float32Array(w * h).fill(140);
     expect(cornerMotion(a, b, w, h)).toBe(40);
     expect(cornerMotion(null, b, w, h)).toBe(0);
+  });
+});
+
+
+// Side-view skeleton: seated has hip at knee height (thigh horizontal); standing has the hip one thigh above.
+function sidePose(h: number, opts: { armsOut?: boolean } = {}) {
+  const lm = Array.from({ length: 33 }, () => P(0.5, 0.5, 0.1));
+  const knee = { x: 0.55, y: 0.62 }, ankle = { x: 0.55, y: 0.85 }, thigh = 0.18;
+  // h = 0 seated (hip level with knee, behind it), h = 1 standing (hip straight above knee)
+  const hip = { x: knee.x - thigh * Math.cos((h * Math.PI) / 2), y: knee.y - thigh * Math.sin((h * Math.PI) / 2) };
+  for (const i of [23, 24]) lm[i] = P(hip.x, hip.y);
+  for (const i of [25, 26]) lm[i] = P(knee.x, knee.y);
+  for (const i of [27, 28]) lm[i] = P(ankle.x, ankle.y);
+  lm[11] = P(hip.x + 0.02, hip.y - 0.22); lm[12] = P(hip.x + 0.02, hip.y - 0.22); lm[0] = P(hip.x + 0.04, hip.y - 0.3);
+  const w = opts.armsOut ? P(hip.x + 0.02, hip.y + 0.05) : P(hip.x + 0.03, hip.y - 0.2);
+  lm[15] = w; lm[16] = w;
+  return lm;
+}
+
+describe('StandCounter', () => {
+  const run = (heights: number[], stepMs = 100, opts = {}) => {
+    const c = new StandCounter();
+    c.calibrate(sidePose(0));
+    heights.forEach((h, i) => c.update(sidePose(h, opts), i * stepMs));
+    return c;
+  };
+  const stand = (n: number) => Array.from({ length: n }, () => [0, 0.1, 0.3, 0.5, 0.7, 0.9, 1, 1, 0.8, 0.5, 0.3, 0.1, 0]).flat();
+
+  it('counts full stands from hip height', () => {
+    expect(run(stand(5)).reps).toBe(5);
+  });
+  it('ignores half stands and jitter', () => {
+    expect(run([0, 0.2, 0.4, 0.5, 0.4, 0.2, 0, 0.1, 0.05, 0.3, 0.1]).reps).toBe(0);
+  });
+  it('counts a stand that is more than halfway up when time runs out (STEADI)', () => {
+    const c = run([...stand(3), 0, 0.2, 0.4, 0.6]);
+    expect(c.reps).toBe(3);
+    expect(c.finish()).toBe(4);
+  });
+  it('does not count one that is less than halfway up', () => {
+    const c = run([...stand(2), 0, 0.2, 0.35]);
+    expect(c.finish()).toBe(2);
+  });
+  it('does not double count fast bounces under the minimum time', () => {
+    expect(run([0, 1, 0, 1, 0, 1], 100).reps).toBe(1);
+  });
+  it('flags stands made with the arms uncrossed', () => {
+    const c = run(stand(3), 100, { armsOut: true });
+    expect(c.reps).toBe(3);
+    expect(c.armsFlags).toBe(3);
+    expect(run(stand(3)).armsFlags).toBe(0);
+  });
+  it('reports tracking confidence when the body is lost', () => {
+    const c = new StandCounter();
+    c.update(sidePose(0), 0); c.update(null, 100); c.update(sidePose(1), 200); c.update(null, 300);
+    expect(c.confidence).toBe(0.5);
+  });
+});
+
+// Synthetic camera frames: a sharp checkerboard scene, the same scene blurred, and the same scene hazed.
+function scene(w = 160, h = 120) {
+  const g = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) g[y * w + x] = ((x >> 3) + (y >> 3)) % 2 ? 200 : 40;
+  return g;
+}
+function blur(g: Float32Array, w: number, h: number, r: number) {
+  let out = g;
+  for (let pass = 0; pass < 3; pass++) {
+    const n = new Float32Array(out.length);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0, c = 0;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx >= 0 && xx < w && yy >= 0 && yy < h) { s += out[yy * w + xx]; c++; }
+      }
+      n[y * w + x] = s / c;
+    }
+    out = n;
+  }
+  return out;
+}
+const haze = (g: Float32Array, k: number) => g.map((v) => v * (1 - k) + 230 * k);
+const frame = (g: Float32Array) => { const s = lensStats(g, 160, 120); return { ...s, motion: 0, landmarks: body() }; };
+
+describe('lens checks', () => {
+  it('passes a sharp image', () => {
+    expect(evaluateFrame(frame(scene())).checks.find((c) => c.id === 'lens')!.status).toBe('ok');
+  });
+  it('asks to wipe the lens when the image is blurred', () => {
+    expect(evaluateFrame(frame(blur(scene(), 160, 120, 3))).current?.fix).toMatch(/Wipe your camera lens/);
+  });
+  it('asks to wipe the lens when a smudge makes the image milky', () => {
+    expect(evaluateFrame(frame(haze(blur(scene(), 160, 120, 1), 0.6))).current?.fix).toMatch(/Wipe your camera lens/);
+  });
+  it('spots a covered lens', () => {
+    expect(evaluateFrame(frame(new Float32Array(160 * 120).fill(5))).current?.fix).toMatch(/covering the camera/);
+  });
+});
+
+describe('light, framing and phone checks', () => {
+  it('spots a bright window behind the patient', () => {
+    expect(evaluateFrame({ ...good, personLuminance: 40 }).current?.fix).toMatch(/window is behind you/);
+  });
+  it('asks others to step out of view', () => {
+    expect(evaluateFrame({ ...good, people: 2 }).current?.id).toBe('alone');
+  });
+  it('asks to stand the phone up when it leans back', () => {
+    expect(evaluateFrame({ ...good, tilt: { beta: 60, gamma: 0 } }).current?.fix).toMatch(/leaning back/);
+    expect(evaluateFrame({ ...good, tilt: { beta: 88, gamma: 2 } }).ready).toBe(true);
+  });
+  it('asks to step back when the body fills the frame', () => {
+    expect(evaluateFrame({ ...good, landmarks: body(0.95) }).current?.fix).toMatch(/back one step/);
+  });
+});
+
+describe('CheckSmoother', () => {
+  it('waits for a check to fail several times before asking for a fix, then clears after passes', () => {
+    const s = new CheckSmoother(3, 2);
+    const bad = evaluateFrame({ ...good, sharpness: 5, detail: 0.01 });
+    const ok = evaluateFrame(good);
+    expect(s.update(bad).ready).toBe(true);
+    expect(s.update(bad).ready).toBe(true);
+    expect(s.update(bad).current?.id).toBe('lens');
+    expect(s.update(ok).current?.id).toBe('lens');
+    expect(s.update(ok).ready).toBe(true);
   });
 });

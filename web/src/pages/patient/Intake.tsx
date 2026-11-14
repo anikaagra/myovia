@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Screen, ErrorNote } from '../../components/Screen';
 import { api } from '../../lib/api';
-import { session } from '../../lib/session';
 
 type A = Record<string, string>;
 type Step = { id: string; q: string; why: string; when?: (a: A) => boolean; render: (a: A, set: (k: string, v: string) => void) => React.ReactNode; valid: (a: A) => string | null };
@@ -84,9 +83,8 @@ export function Intake() {
     if (i < steps.length - 1) { setI(i + 1); window.scrollTo(0, 0); return; }
     setBusy(true);
     try {
-      const p = await api.createPatient({ ...a, age: Number(a.age), startWeightLb: Number(a.startWeightLb), currentWeightLb: Number(a.currentWeightLb),
+      await api.createPatient({ ...a, age: Number(a.age), startWeightLb: Number(a.startWeightLb), currentWeightLb: Number(a.currentWeightLb),
         heightIn: Number(a.heightFt) * 12 + Number(a.heightInch || 0) });
-      session.set(p.id);
       nav('/', { replace: true });
     } catch (ex) { setErr((ex as Error).message); setBusy(false); }
   }

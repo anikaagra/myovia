@@ -45,3 +45,49 @@ export function cornerMotion(prev: Float32Array | null, gray: Float32Array, w: n
   }
   return n ? s / n : 0;
 }
+
+/** Luminance percentile (0-100) from a 256-bin histogram. */
+export function percentile(gray: Float32Array, p: number): number {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i++) hist[Math.max(0, Math.min(255, gray[i] | 0))]++;
+  const target = (p / 100) * gray.length;
+  let acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= target) return v; }
+  return 255;
+}
+
+export function variance(gray: Float32Array): number {
+  let s = 0, s2 = 0;
+  for (let i = 0; i < gray.length; i++) { s += gray[i]; s2 += gray[i] * gray[i]; }
+  const n = gray.length || 1, m = s / n;
+  return s2 / n - m * m;
+}
+
+/** Share of pixels at or above `level` (blown-out highlights, e.g. a window behind the patient). */
+export function clippedFraction(gray: Float32Array, level = 250): number {
+  let n = 0;
+  for (let i = 0; i < gray.length; i++) if (gray[i] >= level) n++;
+  return gray.length ? n / gray.length : 0;
+}
+
+/** Mean luminance inside a normalized box (0-1 coordinates), e.g. around the patient. */
+export function regionMean(gray: Float32Array, w: number, h: number, box: { x0: number; y0: number; x1: number; y1: number }): number {
+  const x0 = Math.max(0, Math.floor(box.x0 * w)), x1 = Math.min(w, Math.ceil(box.x1 * w));
+  const y0 = Math.max(0, Math.floor(box.y0 * h)), y1 = Math.min(h, Math.ceil(box.y1 * h));
+  let s = 0, n = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { s += gray[y * w + x]; n++; }
+  return n ? s / n : 0;
+}
+
+export type LensStats = { sharpness: number; detail: number; p5: number; p95: number; luminance: number; clipped: number };
+
+/**
+ * Image statistics used to spot a smudged, fogged or covered lens:
+ * - sharpness: variance of the Laplacian (falls when edges blur)
+ * - detail: sharpness relative to overall contrast, so a plain wall isn't mistaken for a smudge
+ * - p5 / p95: a smudge scatters light, lifting the darks (haze) and narrowing the range
+ */
+export function lensStats(gray: Float32Array, w: number, h: number): LensStats {
+  const sharpness = laplacianVariance(gray, w, h);
+  return { sharpness, detail: sharpness / (variance(gray) + 1), p5: percentile(gray, 5), p95: percentile(gray, 95), luminance: meanLuminance(gray), clipped: clippedFraction(gray) };
+}

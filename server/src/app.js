@@ -61,7 +61,7 @@ export function createApp(db, opts = {}) {
     updateWeight: db.prepare('UPDATE patients SET current_weight_lb = ? WHERE id = ?'),
     staffByEmail: db.prepare('SELECT * FROM staff WHERE email = ?'),
     staffById: db.prepare('SELECT * FROM staff WHERE id = ?'),
-    staffFor: db.prepare('SELECT id, name, email, role, created_at FROM staff WHERE provider_code = ? ORDER BY created_at'),
+    staffFor: db.prepare("SELECT id, name, email, role, created_at FROM staff WHERE provider_code = ? AND password_hash != 'removed' ORDER BY created_at"),
     insertStaff: db.prepare('INSERT INTO staff (id, provider_code, email, name, role, password_hash, created_at) VALUES (?,?,?,?,?,?,?)'),
     insertToken: db.prepare('INSERT INTO tokens (token_hash, kind, subject_id, created_at, expires_at) VALUES (?,?,?,?,?)'),
     token: db.prepare('SELECT * FROM tokens WHERE token_hash = ?'),
@@ -183,7 +183,7 @@ export function createApp(db, opts = {}) {
   // Move a patient to a new phone with a one-time code from their care team.
   app.post('/api/patients/link', (req, res) => {
     const code = String(req.body?.code ?? '').replace(/\D/g, '');
-    need(linkLimit.hit(req.ip), 'Too many tries. Please wait 15 minutes and try again.');
+    if (!linkLimit.hit(req.ip)) throw new HttpError(429, 'Too many tries. Please wait 15 minutes and try again.');
     const row = code.length === 6 && q.link.get(hashToken(code));
     if (!row || row.expires_at < now()) throw new HttpError(400, 'That code didn’t work. Codes last 30 minutes; ask your care team for a new one.');
     q.deleteLink.run(row.code_hash);
@@ -306,7 +306,7 @@ export function createApp(db, opts = {}) {
   app.post('/api/staff/login', (req, res) => {
     const email = String(req.body?.email ?? '').trim().toLowerCase();
     const password = String(req.body?.password ?? '');
-    need(signInLimit.hit(`${req.ip}|${email}`), 'Too many sign-in attempts. Please wait 15 minutes.');
+    if (!signInLimit.hit(`${req.ip}|${email}`)) throw new HttpError(429, 'Too many sign-in attempts. Please wait 15 minutes.');
     const s = q.staffByEmail.get(email);
     if (!s || !verifyPassword(password, s.password_hash)) throw new HttpError(401, 'That email and password don’t match.');
     signInLimit.reset(`${req.ip}|${email}`);
@@ -324,7 +324,7 @@ export function createApp(db, opts = {}) {
     const patients = q.patientsFor.all(code).map((r) => withChecks(patientFromRow(r))).map((p) => {
       const last = p.checks[p.checks.length - 1];
       const fus = followUpsFor(p.id);
-      const lastFu = fus.filter((f) => f.kind !== 'message' || true).slice(-1)[0] ?? null;
+      const lastFu = fus[fus.length - 1] ?? null;
       const handled = last && fus.some((f) => ['reviewed', 'contacted', 'referred'].includes(f.kind) && f.createdAt >= last.createdAt);
       return {
         id: p.id, firstName: p.firstName, age: p.age, sex: p.sex, medication: p.medication, startDate: p.startDate,
@@ -415,6 +415,26 @@ export function createApp(db, opts = {}) {
     res.status(201).json({ id, name, email, role });
   });
 
+  app.post('/api/staff/password', staffAuth, (req, res) => {
+    const { current, next } = req.body ?? {};
+    if (!verifyPassword(String(current ?? ''), req.staff.password_hash)) throw new HttpError(400, 'Your current password is not right.');
+    need(String(next ?? '').length >= 10, 'Use a new password of at least 10 characters.');
+    db.prepare('UPDATE staff SET password_hash = ? WHERE id = ?').run(hashPassword(next), req.staff.id);
+    db.prepare('DELETE FROM tokens WHERE kind = ? AND subject_id = ? AND token_hash != ?').run('staff', req.staff.id, req.tokenHash);
+    audit('staff', req.staff.id, 'staff.password', { providerCode: req.staff.provider_code });
+    res.status(204).end();
+  });
+
+  app.delete('/api/clinic/staff/:staffId', staffAuth, adminOnly, (req, res) => {
+    const s = q.staffById.get(req.params.staffId);
+    if (!s || s.provider_code !== req.staff.provider_code) throw new HttpError(404, 'Staff member not found');
+    need(s.id !== req.staff.id, 'You can’t remove yourself.');
+    q.deleteTokensFor.run('staff', s.id);
+    db.prepare("UPDATE staff SET password_hash = 'removed', email = ? WHERE id = ?").run(`removed+${s.id}@rise.invalid`, s.id);
+    audit('staff', req.staff.id, 'staff.remove', { providerCode: req.staff.provider_code, detail: { email: s.email } });
+    res.status(204).end();
+  });
+
   app.get('/api/clinic/settings', staffAuth, (req, res) => {
     const own = q.setting.get(`ai_key:${req.staff.provider_code}`)?.value;
     res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: own ? 'clinic' : aiKey(null) ? 'server' : null,
@@ -430,7 +450,7 @@ export function createApp(db, opts = {}) {
       q.putSetting.run(`ai_key:${req.staff.provider_code}`, key, now());
     }
     audit('staff', req.staff.id, key ? 'settings.ai_key_set' : 'settings.ai_key_removed', { providerCode: req.staff.provider_code });
-    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeyHint: key ? `…${key.slice(-4)}` : null });
+    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: key ? 'clinic' : aiKey(null) ? 'server' : null, aiKeyHint: key ? `…${key.slice(-4)}` : null });
   }));
 
   app.get('/api/clinic/audit', staffAuth, adminOnly, (req, res) => {
@@ -441,6 +461,7 @@ export function createApp(db, opts = {}) {
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     const status = err.status ?? (err.type === 'entity.parse.failed' ? 400 : err.type === 'entity.too.large' ? 413 : 500);
+    if (status === 429) res.set('Retry-After', '900');
     if (status === 500) console.error(err);
     const msg = status === 500 ? 'Something went wrong on our side. Please try again.'
       : status === 413 ? 'That file is too large. Try a smaller photo.' : err.message;

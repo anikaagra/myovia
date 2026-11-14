@@ -4,7 +4,8 @@ import { Screen } from '../../components/Screen';
 export function Welcome() {
   return (
     <Screen footer={<><Link to="/setup" className="rise-btn rise-btn--primary rise-btn--block">Set up my first check</Link>
-      <Link to="/provider" className="rise-btn rise-btn--quiet">I'm a care provider</Link></>}>
+      <Link to="/link" className="rise-btn rise-btn--secondary rise-btn--block">I already use Rise</Link>
+      <Link to="/provider" className="rise-btn rise-btn--quiet">I'm on a care team</Link></>}>
       <svg className="hero-mark" viewBox="0 0 360 200" aria-hidden="true">
         <rect className="slab" x="64" y="0" width="296" height="200" rx="24" />
         <rect className="tint" x="0" y="120" width="96" height="80" rx="12" />

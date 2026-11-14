@@ -12,3 +12,14 @@ export function say(text: string, { force = false, repeatAfterMs = 6000 } = {}) 
   window.speechSynthesis.speak(u);
 }
 export const stopSpeaking = () => { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); };
+
+/**
+ * iPhone Safari only speaks after a tap has started speech once. Call this from a button's click handler
+ * before any spoken guidance that will run later from timers or camera frames.
+ */
+export function unlockSpeech() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(' ');
+  u.volume = 0;
+  window.speechSynthesis.speak(u);
+}
