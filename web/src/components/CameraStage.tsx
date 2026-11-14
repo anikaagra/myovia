@@ -175,8 +175,10 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
     (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('insecure'), { name: 'Insecure' });
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-        if (cancelled) return;
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        // If the screen closed while the camera was starting, turn it straight off again.
+        if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
+        stream = s;
         const v = videoRef.current!;
         v.srcObject = stream;
         await v.play().catch(() => undefined);

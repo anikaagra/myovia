@@ -2,7 +2,7 @@ import express from 'express';
 import { computeTier, evaluateCheck, STATE_RANK, TIERS, METHOD_LABEL } from './rules.js';
 import { newId, patientFromRow, checkFromRow, insertCheck, followUpFromRow } from './db.js';
 import { toExport } from './exportShape.js';
-import { hashPassword, verifyPassword, newToken, hashToken, newLinkCode, bearer, limiter } from './auth.js';
+import { hashPassword, verifyPassword, newToken, hashToken, newLinkCode, bearer, limiter, sealSecret, openSecret } from './auth.js';
 import { createAi, templateNote } from './ai.js';
 import { weeklyPlan } from './plan.js';
 import { reminderIcs } from './ics.js';
@@ -14,6 +14,7 @@ const FALLS = ['none', 'once', 'more', 'skip'];
 const METHODS = Object.keys(METHOD_LABEL);
 const FOLLOW_UP_KINDS = ['reviewed', 'contacted', 'message', 'note', 'referred'];
 const STAFF_SESSION_HOURS = 12;
+const PATIENT_TOKEN_DAYS = 180; // rolling: each use extends it
 const LINK_CODE_MINUTES = 30;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
@@ -45,8 +46,10 @@ export function createApp(db, opts = {}) {
     next();
   });
   app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-  app.use('/api/me/read-report', express.json({ limit: '12mb' }));
-  app.use(express.json({ limit: '64kb' }));
+  // Small JSON bodies everywhere; the one route that takes a photo parses its large body only after sign-in.
+  const smallJson = express.json({ limit: '64kb' });
+  const largeJson = express.json({ limit: '12mb' });
+  app.use((req, res, next) => (req.path === '/api/me/read-report' ? next() : smallJson(req, res, next)));
 
   const q = {
     provider: db.prepare('SELECT * FROM providers WHERE code = ?'),
@@ -65,7 +68,9 @@ export function createApp(db, opts = {}) {
     insertStaff: db.prepare('INSERT INTO staff (id, provider_code, email, name, role, password_hash, created_at) VALUES (?,?,?,?,?,?,?)'),
     insertToken: db.prepare('INSERT INTO tokens (token_hash, kind, subject_id, created_at, expires_at) VALUES (?,?,?,?,?)'),
     token: db.prepare('SELECT * FROM tokens WHERE token_hash = ?'),
-    touchToken: db.prepare('UPDATE tokens SET last_used_at = ? WHERE token_hash = ?'),
+    touchToken: db.prepare('UPDATE tokens SET last_used_at = ?, expires_at = COALESCE(?, expires_at) WHERE token_hash = ?'),
+    deleteAiFor: db.prepare("DELETE FROM ai_outputs WHERE (kind = 'note' AND subject_id = ?) OR (kind = 'coach' AND subject_id IN (SELECT CAST(id AS TEXT) FROM checks WHERE patient_id = ?))"),
+    updateTier: db.prepare('UPDATE patients SET tier = ?, tier_reasons = ? WHERE id = ?'),
     deleteToken: db.prepare('DELETE FROM tokens WHERE token_hash = ?'),
     deleteTokensFor: db.prepare('DELETE FROM tokens WHERE kind = ? AND subject_id = ?'),
     insertLink: db.prepare('INSERT INTO link_codes (code_hash, patient_id, expires_at, created_by) VALUES (?,?,?,?)'),
@@ -80,7 +85,9 @@ export function createApp(db, opts = {}) {
     setting: db.prepare('SELECT value FROM settings WHERE key = ?'),
     putSetting: db.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at'),
     deleteSetting: db.prepare('DELETE FROM settings WHERE key = ?'),
-    softDelete: db.prepare(`UPDATE patients SET deleted_at = ?, first_name = 'Deleted', goal = NULL, dose = NULL, medication = NULL WHERE id = ?`),
+    softDelete: db.prepare(`UPDATE patients SET deleted_at = ?, first_name = 'Deleted', age = 0, sex = 'other', menopause = NULL, medication = NULL,
+      dose = NULL, start_date = NULL, start_weight_lb = NULL, current_weight_lb = NULL, activity = NULL, falls = NULL, joint_pain = NULL,
+      goal = NULL, height_in = NULL, tier = 'standard', tier_reasons = '[]' WHERE id = ?`),
     deleteChecks: db.prepare('DELETE FROM checks WHERE patient_id = ?'),
     deleteFollowUps: db.prepare('DELETE FROM follow_ups WHERE patient_id = ?'),
   };
@@ -88,12 +95,21 @@ export function createApp(db, opts = {}) {
   const audit = (actorKind, actorId, action, { patientId = null, providerCode = null, detail = null } = {}) =>
     q.audit.run(now(), actorKind, actorId, action, patientId, providerCode, detail ? JSON.stringify(detail) : null);
 
-  // AI key: a clinic's own key (set in clinic settings) or the server's ANTHROPIC_API_KEY.
-  const aiKey = (code) => (code && q.setting.get(`ai_key:${code}`)?.value) || opts.anthropicKey || process.env.ANTHROPIC_API_KEY || null;
+  // AI key: a clinic's own key (set in clinic settings), or the server's ANTHROPIC_API_KEY for clinics listed in
+  // RISE_AI_CLINICS (comma-separated codes, or * for all). Self-signup clinics never spend the server's key by default.
+  const serverKeyClinics = () => String(opts.aiClinics ?? process.env.RISE_AI_CLINICS ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+  const serverKey = () => opts.anthropicKey || process.env.ANTHROPIC_API_KEY || null;
+  const ownKey = (code) => (code ? openSecret(q.setting.get(`ai_key:${code}`)?.value) : null);
+  const aiKey = (code) => ownKey(code) || (serverKey() && code && (serverKeyClinics().includes('*') || serverKeyClinics().includes(code)) ? serverKey() : null);
   const ai = opts.ai ?? createAi(db, { getKey: aiKey, ...(opts.aiClient ? { clientFor: opts.aiClient } : {}) });
 
   const signInLimit = limiter({ max: 8 });
+  const signInIpLimit = limiter({ max: 40 });
   const linkLimit = limiter({ max: 6 });
+  const signupLimit = limiter({ max: 5, windowMs: 60 * 60 * 1000 });
+  const enrollLimit = limiter({ max: 30, windowMs: 60 * 60 * 1000 });
+  const aiLimit = limiter({ max: Number(process.env.RISE_AI_DAILY_LIMIT ?? 60), windowMs: 24 * 60 * 60 * 1000 });
+  const limit = (l, key, msg = 'Too many requests. Please wait a while and try again.') => { if (!l.hit(key)) throw new HttpError(429, msg); };
 
   // ---------- loading helpers ----------
   const loadPatient = (id) => {
@@ -120,7 +136,7 @@ export function createApp(db, opts = {}) {
     if (!row || row.kind !== kind || (row.expires_at && row.expires_at < now())) {
       return next(new HttpError(401, kind === 'staff' ? 'Please sign in again.' : 'This phone is no longer linked to Rise. Ask your care team for a new link code.'));
     }
-    q.touchToken.run(now(), row.token_hash);
+    q.touchToken.run(now(), kind === 'patient' ? new Date(Date.now() + PATIENT_TOKEN_DAYS * 864e5).toISOString() : null, row.token_hash);
     req.tokenHash = row.token_hash;
     if (kind === 'patient') {
       const p = patientFromRow(q.patient.get(row.subject_id));
@@ -148,6 +164,7 @@ export function createApp(db, opts = {}) {
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
   app.post('/api/patients', (req, res) => {
+    limit(enrollLimit, req.ip);
     const b = req.body ?? {};
     const code = String(b.providerCode ?? '').trim().toUpperCase();
     need(q.provider.get(code), 'That provider code was not found. Check the code your care team gave you.');
@@ -177,7 +194,7 @@ export function createApp(db, opts = {}) {
     q.insertPatient.run(id, code, p.firstName, p.age, p.sex, p.menopause, p.medication, p.dose, p.startDate,
       p.startWeightLb, p.currentWeightLb, p.activity, p.falls, p.jointPain, p.goal, p.heightIn, tier, JSON.stringify(reasons), now());
     audit('patient', id, 'patient.enroll', { patientId: id, providerCode: code });
-    res.status(201).json({ ...withChecks(loadPatient(id)), token: issueToken('patient', id), messages: [] });
+    res.status(201).json({ ...withChecks(loadPatient(id)), token: issueToken('patient', id, PATIENT_TOKEN_DAYS * 24), messages: [] });
   });
 
   // Move a patient to a new phone with a one-time code from their care team.
@@ -189,7 +206,7 @@ export function createApp(db, opts = {}) {
     q.deleteLink.run(row.code_hash);
     const p = loadPatient(row.patient_id);
     audit('patient', p.id, 'patient.link', { patientId: p.id, providerCode: p.providerCode });
-    res.json({ ...patientView(p), token: issueToken('patient', p.id) });
+    res.json({ ...patientView(p), token: issueToken('patient', p.id, PATIENT_TOKEN_DAYS * 24) });
   });
 
   // ---------- patient ----------
@@ -227,6 +244,13 @@ export function createApp(db, opts = {}) {
       'Lean mass and body fat don’t add up. Check both numbers against your scan.');
     need(c.gripKg == null || (c.gripKg >= 2 && c.gripKg <= 90), 'Grip must be between 2 and 90 kg.');
     need(c.asmKg == null || (c.asmKg >= 5 && c.asmKg <= 60), 'Appendicular lean mass must be between 5 and 60 kg.');
+    // Risk can change (turning 65, faster weight loss): recompute the tier with today's weight before evaluating.
+    const t = computeTier({ ...p, currentWeightLb: c.weightLb ?? p.currentWeightLb });
+    if (t.tier !== p.tier || JSON.stringify(t.reasons) !== JSON.stringify(p.tierReasons)) {
+      q.updateTier.run(t.tier, JSON.stringify(t.reasons), p.id);
+      if (t.tier !== p.tier) audit('system', null, `tier.${t.tier}`, { patientId: p.id, providerCode: p.providerCode, detail: { reasons: t.reasons } });
+      p.tier = t.tier; p.tierReasons = t.reasons;
+    }
     const history = q.checks.all(p.id).map(checkFromRow);
     const r = evaluateCheck(p, history, c);
     const { lastInsertRowid } = insertCheck(db, p.id, c, r);
@@ -244,6 +268,7 @@ export function createApp(db, opts = {}) {
     const check = checkFromRow(row);
     const plan = weeklyPlan(p, check, check.weightLb);
     if (!ai.enabled(p.providerCode)) return res.json({ ai: false, plan });
+    if (!aiLimit.hit(`p:${p.id}`)) return res.json({ ai: false, plan, error: 'ai_limit' });
     try {
       res.json({ ...(await ai.coach(p, check, plan)), plan });
     } catch (e) {
@@ -253,7 +278,8 @@ export function createApp(db, opts = {}) {
   }));
 
   // Read a photo or PDF of a body composition printout. The file is not stored.
-  app.post('/api/me/read-report', patientAuth, h(async (req, res) => {
+  app.post('/api/me/read-report', patientAuth, largeJson, h(async (req, res) => {
+    limit(aiLimit, `p:${req.patient.id}`, 'You’ve read a lot of printouts today. Please type the numbers in, or try again tomorrow.');
     const { data, mediaType } = req.body ?? {};
     need(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(mediaType), 'Please use a photo (JPEG or PNG) or a PDF.');
     need(typeof data === 'string' && data.length > 100 && data.length < 11_500_000 && /^[A-Za-z0-9+/=]+$/.test(data.slice(0, 2000)), 'That file could not be read.');
@@ -272,15 +298,21 @@ export function createApp(db, opts = {}) {
   // Patient deletes their data. Checks and notes are removed; an anonymous stub keeps the audit trail intact.
   app.delete('/api/me', patientAuth, (req, res) => {
     const id = req.patient.id;
-    q.deleteChecks.run(id); q.deleteFollowUps.run(id); q.deleteLinksFor.run(id);
-    q.softDelete.run(now(), id);
-    q.deleteTokensFor.run('patient', id);
+    db.exec('BEGIN');
+    try {
+      q.deleteAiFor.run(id, id);
+      q.deleteChecks.run(id); q.deleteFollowUps.run(id); q.deleteLinksFor.run(id);
+      q.softDelete.run(now(), id);
+      q.deleteTokensFor.run('patient', id);
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
     audit('patient', id, 'patient.delete', { patientId: id, providerCode: req.patient.providerCode });
     res.status(204).end();
   });
 
   // ---------- care team ----------
   app.post('/api/clinics', (req, res) => {
+    limit(signupLimit, req.ip);
     const b = req.body ?? {};
     const clinicName = String(b.clinicName ?? '').trim().slice(0, 80);
     const name = String(b.name ?? '').trim().slice(0, 60);
@@ -306,7 +338,9 @@ export function createApp(db, opts = {}) {
   app.post('/api/staff/login', (req, res) => {
     const email = String(req.body?.email ?? '').trim().toLowerCase();
     const password = String(req.body?.password ?? '');
-    if (!signInLimit.hit(`${req.ip}|${email}`)) throw new HttpError(429, 'Too many sign-in attempts. Please wait 15 minutes.');
+    if (!signInLimit.hit(`${req.ip}|${email}`) || !signInLimit.hit(`email|${email}`) || !signInIpLimit.hit(req.ip)) {
+      throw new HttpError(429, 'Too many sign-in attempts. Please wait 15 minutes.');
+    }
     const s = q.staffByEmail.get(email);
     if (!s || !verifyPassword(password, s.password_hash)) throw new HttpError(401, 'That email and password don’t match.');
     signInLimit.reset(`${req.ip}|${email}`);
@@ -389,7 +423,7 @@ export function createApp(db, opts = {}) {
   app.get('/api/clinic/patients/:id/note', staffAuth, h(async (req, res) => {
     const p = withChecks(clinicPatient(req));
     audit('staff', req.staff.id, 'note.generate', { patientId: p.id, providerCode: p.providerCode });
-    if (!p.checks.length || !ai.enabled(p.providerCode)) return res.json(templateNote(p));
+    if (!p.checks.length || !ai.enabled(p.providerCode) || !aiLimit.hit(`c:${p.providerCode}:${p.id}`)) return res.json(templateNote(p));
     try {
       res.json(await ai.providerNote(p, followUpsFor(p.id)));
     } catch (e) {
@@ -437,8 +471,10 @@ export function createApp(db, opts = {}) {
 
   app.get('/api/clinic/settings', staffAuth, (req, res) => {
     const own = q.setting.get(`ai_key:${req.staff.provider_code}`)?.value;
-    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: own ? 'clinic' : aiKey(null) ? 'server' : null,
-      aiKeyHint: own ? `…${own.slice(-4)}` : null });
+    const admin = req.staff.role === 'admin';
+    const key = ownKey(req.staff.provider_code);
+    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: own ? 'clinic' : aiKey(req.staff.provider_code) ? 'server' : null,
+      aiKeyHint: admin && key ? `…${key.slice(-4)}` : null });
   });
 
   app.put('/api/clinic/settings/ai-key', staffAuth, adminOnly, h(async (req, res) => {
@@ -447,10 +483,10 @@ export function createApp(db, opts = {}) {
       q.deleteSetting.run(`ai_key:${req.staff.provider_code}`);
     } else {
       need(/^sk-ant-[A-Za-z0-9_-]{20,200}$/.test(key), 'That doesn’t look like an Anthropic API key. It starts with sk-ant-.');
-      q.putSetting.run(`ai_key:${req.staff.provider_code}`, key, now());
+      q.putSetting.run(`ai_key:${req.staff.provider_code}`, sealSecret(key), now());
     }
     audit('staff', req.staff.id, key ? 'settings.ai_key_set' : 'settings.ai_key_removed', { providerCode: req.staff.provider_code });
-    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: key ? 'clinic' : aiKey(null) ? 'server' : null, aiKeyHint: key ? `…${key.slice(-4)}` : null });
+    res.json({ aiEnabled: ai.enabled(req.staff.provider_code), aiKeySource: key ? 'clinic' : aiKey(req.staff.provider_code) ? 'server' : null, aiKeyHint: key ? `…${key.slice(-4)}` : null });
   }));
 
   app.get('/api/clinic/audit', staffAuth, adminOnly, (req, res) => {
@@ -465,7 +501,7 @@ export function createApp(db, opts = {}) {
     if (status === 500) console.error(err);
     const msg = status === 500 ? 'Something went wrong on our side. Please try again.'
       : status === 413 ? 'That file is too large. Try a smaller photo.' : err.message;
-    res.status(status).json({ error: msg, ...(err.code ? { code: err.code } : {}) });
+    res.status(status).json({ error: msg, ...(err.code && status !== 500 && /^ai_/.test(err.code) ? { code: err.code } : {}) });
   });
   return app;
 }

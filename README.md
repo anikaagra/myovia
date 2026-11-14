@@ -27,7 +27,7 @@ The demo republishes automatically on every push to `main` (GitHub Actions › *
 
 **Patient app** (installable web app, built for iPhone)
 - **Setup:** 9 to 10 questions, one per screen. Answers set a **Higher** or **Standard** risk tier (how often to check, how fast to escalate). The phone gets a private sign-in token; *I already use Rise* moves a patient to a new phone with a 6-digit code from their care team.
-- **Readiness:** sleep and pain/illness questions. A rough day never flags the nurse on its own and retests in a week.
+- **Readiness:** sleep and pain/illness questions. A rough day softens a moderate drop to Watch and retests in a week, but never hides a large decline, and two rough-day drops in a row escalate.
 - **Camera checks before recording** (all on the live camera, spoken and written, one fix at a time, debounced so one bad frame never interrupts):
   - *Lens:* blur (variance of the Laplacian, normalised by contrast so a plain wall isn't flagged), milky smudge haze (lifted blacks, narrow range), covered lens.
   - *Light:* too dark, too bright, a bright window behind the patient (blown-out pixels, or the person much darker than the room).
@@ -39,7 +39,7 @@ The demo republishes automatically on every push to `main` (GitHub Actions › *
 - **Home:** latest result, trend, plan, messages from the care team. **Settings:** calendar reminders (.ics), Home Screen install steps, unlink this phone, delete my data.
 
 **Care-team app**
-- Email/password sign-in (scrypt, hashed session tokens, rate-limited), clinic sign-up, admin and nurse roles.
+- Email/password sign-in (scrypt, hashed session tokens, rate limits per account, per email and per IP), clinic sign-up, admin and nurse roles, password change, remove staff.
 - **Needs review** list first, then Watch/Check in, then steady; each row shows why and the last follow-up.
 - Patient page: why this result, trends, every measure and its source, setup answers, what the patient saw.
 - **Follow-up:** mark reviewed, log a call, referral, note, **message the patient** (shows in their app). Reviewing clears "needs review".
@@ -49,7 +49,8 @@ The demo republishes automatically on every push to `main` (GitHub Actions › *
 **AI (Claude)**
 - Personal result notes for patients, draft clinical notes for nurses, and reading body composition printouts from a photo or PDF.
 - The rules engine always decides the state; AI only writes words around numbers computed in code. Output is checked (no diagnosis, no medication advice, same state) and cached; every feature falls back to non-AI text when the key is missing or a call fails.
-- Key: set `ANTHROPIC_API_KEY` on the server, or an admin pastes it in care-team Settings (stored server-side, never sent back to the browser). Models: `RISE_AI_MODEL` (default `claude-sonnet-5-5`) and `RISE_AI_FAST_MODEL` (default `claude-haiku-5-5`, used for reading printouts).
+- Output checks: no diagnosis or medication-change wording, no claim that contradicts the rules' state, no numbers that weren't in the facts. Patient-typed text is passed as data, never instructions. Notes always lead with a code-written state line. Per-patient daily AI limit.
+- Key: set `ANTHROPIC_API_KEY` on the server for allowed clinics, or a clinic admin pastes their own in care-team Settings (encrypted at rest, never sent back to the browser). Models: `RISE_AI_MODEL` (default `claude-sonnet-5-5`) and `RISE_AI_FAST_MODEL` (default `claude-haiku-5-5`, used for reading printouts).
 
 **Privacy and records**
 - Camera video and body photos are processed on the phone and never uploaded. Printout photos are sent for reading and not stored.
@@ -64,7 +65,19 @@ npm run install:all
 npm run dev          # API on :3001, app on http://localhost:5173
 ```
 
-Open http://localhost:5173. Patients use code **DEMO42**; the care team signs in at `/provider` with `nurse@demo.rise` / `rise-demo-2026`. To turn on AI locally: `ANTHROPIC_API_KEY=sk-ant-... npm run dev`, or paste the key in care-team Settings.
+Open http://localhost:5173. Patients use code **DEMO42**; the care team signs in at `/provider` with `nurse@demo.rise` / `rise-demo-2026` (a nurse account). The demo clinic's admin is `admin@demo.rise`; its password is printed in the server log at first start, or set it with `RISE_DEMO_ADMIN_PASSWORD`.
+
+To turn on AI locally: `ANTHROPIC_API_KEY=sk-ant-... RISE_AI_CLINICS=DEMO42 npm run dev`, or sign in as the admin and paste the key in care-team Settings.
+
+| Setting | What it does |
+|---|---|
+| `ANTHROPIC_API_KEY` | Server-wide Claude key, used only by clinics in `RISE_AI_CLINICS` |
+| `RISE_AI_CLINICS` | Clinic codes allowed to use the server key (`DEMO42`, or `*`). Other clinics add their own key in Settings |
+| `RISE_SECRET` | Encrypts clinic AI keys at rest (AES-256-GCM) |
+| `RISE_AI_DAILY_LIMIT` | AI calls per patient per day (default 60) |
+| `RISE_SEED` | Create the demo clinic (default on in development, off in production) |
+| `RISE_DEMO_ADMIN_PASSWORD` | Password for `admin@demo.rise` |
+| `RISE_AI_MODEL`, `RISE_AI_FAST_MODEL` | Claude models (defaults `claude-sonnet-5-5`, `claude-haiku-5-5`) |
 
 Production build, served by the API server:
 
@@ -76,7 +89,7 @@ npm run build && npm start   # http://localhost:3001
 
 ## Deploy
 
-**Render (recommended for the full app):** New › Blueprint › this repo. `render.yaml` builds the Docker image, mounts a disk at `/data` for the SQLite database, and asks for `ANTHROPIC_API_KEY`. Any host that runs a Docker container works the same way. Camera access needs `https`, which Render provides.
+**Render (recommended for the full app):** New › Blueprint › this repo. `render.yaml` builds the Docker image, mounts a disk at `/data` for the SQLite database, generates `RISE_SECRET`, lets the demo clinic use the server key, and asks for `ANTHROPIC_API_KEY` and the demo admin password. Turn `RISE_SEED` off and remove the demo clinic before enrolling real patients: its nurse sign-in is public. Any host that runs a Docker container works the same way. Camera access needs `https`, which Render provides.
 
 **Phone demo:** GitHub Pages, published by `.github/workflows/ci.yml` (`npm run build:pages --prefix web` builds it locally).
 

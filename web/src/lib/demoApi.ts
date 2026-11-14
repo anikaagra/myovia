@@ -108,9 +108,10 @@ export const demoApi = {
   },
   linkPhone(code: string): Promise<Me> {
     const s = load() as Store & { links?: Record<string, string> };
-    const id = s.links?.[code.replace(/\D/g, '')];
-    if (!id || !full(id)) return fail('That code didn’t work. Codes last 30 minutes; ask your care team for a new one.');
-    delete s.links![code]; save(); session.set(id);
+    const digits = code.replace(/\D/g, '');
+    const [id, exp] = (s.links?.[digits] ?? '').split('|');
+    if (!id || !full(id) || Number(exp) < Date.now()) return fail('That code didn’t work. Codes last 30 minutes; ask your care team for a new one.');
+    delete s.links![digits]; save(); session.set(id);
     return delay(meView(full(id)!));
   },
   me(): Promise<Me> { const p = currentPatient(); return p ? delay(meView(p)) : fail('This phone is no longer linked to Rise.', 401); },
@@ -121,6 +122,9 @@ export const demoApi = {
     const c = { ...b, stands: Number(b.stands), weightLb: num(b.weightLb), leanMassLb: num(b.leanMassLb), bodyFatPct: num(b.bodyFatPct),
       asmKg: num(b.asmKg), gripKg: num(b.gripKg), bodyCompMethod: typeof b.bodyCompMethod === 'string' && b.bodyCompMethod in METHOD_LABEL ? b.bodyCompMethod : null };
     if (!Number.isInteger(c.stands) || c.stands < 0 || c.stands > 40) return fail('Stands must be a whole number from 0 to 40.');
+    if (c.weightLb != null && (c.weightLb < 60 || c.weightLb > 800)) return fail('Weight must be between 60 and 800 lb.');
+    if (c.bodyFatPct != null && (c.bodyFatPct < 3 || c.bodyFatPct > 75)) return fail('Body fat must be between 3% and 75%.');
+    if (c.gripKg != null && (c.gripKg < 2 || c.gripKg > 90)) return fail('Grip must be between 2 and 90 kg.');
     if (c.leanMassLb != null && c.weightLb != null && c.leanMassLb >= c.weightLb) return fail('Lean mass must be less than your weight. Check the numbers from your scan.');
     if (c.leanMassLb != null && !c.bodyCompMethod) return fail('Please choose where your body composition numbers came from.');
     const r = evaluateCheck(p, p.checks, c) as CheckResult;
@@ -201,6 +205,7 @@ export const demoApi = {
     return delay({ ...p, followUps: followUpsFor(id), plan: planFor(p) });
   },
   async exportPatient(id: string) {
+    { const denied = needStaff(); if (denied) return denied as never; }
     const p = full(id); if (!p) return fail('Patient not found', 404);
     // @ts-expect-error plain JS module shared with the server
     const { toExport } = await import('../../../server/src/exportShape.js');
@@ -216,12 +221,14 @@ export const demoApi = {
     return delay(followUpsFor(id));
   },
   linkCode(id: string) {
+    { const denied = needStaff(); if (denied) return denied as never; }
     const s = load() as Store & { links?: Record<string, string> };
     const code = String(100000 + Math.floor(Math.random() * 900000));
-    s.links = { ...(s.links ?? {}), [code]: id }; save(); log(STAFF.name, 'linkcode.create', id);
+    s.links = { ...(s.links ?? {}), [code]: `${id}|${Date.now() + 30 * 60e3}` }; save(); log(STAFF.name, 'linkcode.create', id);
     return delay({ code, expiresAt: new Date(Date.now() + 30 * 60e3).toISOString() });
   },
   async note(id: string): Promise<Note> {
+    { const denied = needStaff(); if (denied) return denied as never; }
     const p = full(id); if (!p) return fail('Patient not found', 404);
     log(STAFF.name, 'note.generate', id);
     return (p.checks.length ? await demoNote(p, followUpsFor(id)) : null) ?? templateNote(p);

@@ -106,29 +106,44 @@ export type StandFrame = { landmarks: Point[] | null; tMs: number };
  * jitter double-counting. Follows the CDC STEADI rule: if the patient is more than halfway up at 30 seconds,
  * that stand counts.
  */
+const pct = (xs: number[], p: number) => { const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.max(0, Math.round((p / 100) * (a.length - 1))))]; };
+
 export class StandCounter {
   reps = 0;
   phase: Phase = 'unknown';
   armsFlags = 0;
+  lastHeight: number | null = null;
   private seen = 0;
   private tracked = 0;
   private lastRepAt = -Infinity;
-  private seatedY: number | null = null; // largest hip y seen (image y grows downward)
-  private thigh = 0;
-  private smoothH: number | null = null;
   private lastTracked = -Infinity;
   private longestGapMs = 0;
   private armsThisRep = false;
-  lastHeight: number | null = null;
+  // Robust references: one bad landmark frame must not move them. Hip y passes through a median-of-3 filter,
+  // the seated level is the 90th percentile of filtered hip y (image y grows downward), and thigh length is the
+  // 75th percentile of measured thigh lengths.
+  private recentY: number[] = [];
+  private hipYs: number[] = [];
+  private thighs: number[] = [];
+  private smoothH: number | null = null;
+  private rawTail: number[] = [];
 
   constructor(private opts = { up: 0.65, down: 0.25, standAngle: 150, sitAngle: 120, minRepMs: 700, alpha: 0.5 }) {}
+
+  private observe(h: { hip: Point; thigh: number }) {
+    this.recentY.push(h.hip.y); if (this.recentY.length > 3) this.recentY.shift();
+    const y = this.recentY.length === 3 ? pct(this.recentY, 50) : h.hip.y;
+    this.hipYs.push(y); if (this.hipYs.length > 900) this.hipYs.shift();
+    if (h.thigh > 0.02) { this.thighs.push(h.thigh); if (this.thighs.length > 900) this.thighs.shift(); }
+    return y;
+  }
+  private get seatedY() { return this.hipYs.length ? pct(this.hipYs, 90) : null; }
+  private get thigh() { return this.thighs.length ? pct(this.thighs, 75) : 0; }
 
   /** Call while the patient sits during the countdown, so the seated hip height is known before the first stand. */
   calibrate(lm: Point[] | null) {
     const h = lm && hipAndThigh(lm);
-    if (!h) return;
-    this.seatedY = this.seatedY == null ? h.hip.y : Math.max(this.seatedY, h.hip.y);
-    if (h.thigh > this.thigh * 0.9) this.thigh = Math.max(this.thigh * 0.9, h.thigh);
+    if (h) this.observe(h);
   }
 
   /** Returns true when a new stand is counted. */
@@ -139,18 +154,16 @@ export class StandCounter {
     if (Number.isFinite(this.lastTracked)) this.longestGapMs = Math.max(this.longestGapMs, tMs - this.lastTracked);
     this.lastTracked = tMs;
     this.tracked++;
-    this.seatedY = this.seatedY == null ? h.hip.y : Math.max(this.seatedY, h.hip.y);
-    // Thigh length is longest when the thigh is side-on (seated); keep a slowly decaying maximum.
-    this.thigh = Math.max(this.thigh * 0.999, h.thigh);
-    if (this.thigh <= 0.02) return false;
-    const raw = (this.seatedY - h.hip.y) / this.thigh;
+    const y = this.observe(h);
+    const seated = this.seatedY, thigh = this.thigh;
+    if (seated == null || thigh <= 0.02) return false;
+    const raw = (seated - y) / thigh;
+    this.rawTail.push((seated - h.hip.y) / thigh); if (this.rawTail.length > 2) this.rawTail.shift();
     this.smoothH = this.smoothH == null ? raw : this.smoothH + this.opts.alpha * (raw - this.smoothH);
     const height = this.smoothH;
     this.lastHeight = height;
-    const k = kneeAngle(lm);
-    const knee = k?.angle ?? null;
-    const arms = armsUncrossed(lm);
-    if (arms && this.phase === 'seated') this.armsThisRep = true;
+    const knee = kneeAngle(lm)?.angle ?? null;
+    if (armsUncrossed(lm) && this.phase === 'seated') this.armsThisRep = true;
 
     const isDown = height < this.opts.down || (knee != null && knee < this.opts.sitAngle && height < 0.45);
     const isUp = height > this.opts.up && (knee == null || knee > this.opts.standAngle);
@@ -171,7 +184,8 @@ export class StandCounter {
 
   /** STEADI: a stand that is more than halfway up when time runs out counts. */
   finish(): number {
-    if (this.phase === 'seated' && this.lastHeight != null && this.lastHeight > 0.5) this.reps++;
+    // Uses the last two unfiltered frames (filters lag behind a rising patient), both of which must be past halfway.
+    if (this.phase === 'seated' && this.rawTail.length === 2 && Math.min(...this.rawTail) > 0.5) this.reps++;
     return this.reps;
   }
 

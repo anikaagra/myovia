@@ -130,7 +130,7 @@ describe('StandCounter', () => {
     expect(run([0, 0.2, 0.4, 0.5, 0.4, 0.2, 0, 0.1, 0.05, 0.3, 0.1]).reps).toBe(0);
   });
   it('counts a stand that is more than halfway up when time runs out (STEADI)', () => {
-    const c = run([...stand(3), 0, 0.2, 0.4, 0.6]);
+    const c = run([...stand(3), 0, 0.2, 0.4, 0.6, 0.65]);
     expect(c.reps).toBe(3);
     expect(c.finish()).toBe(4);
   });
@@ -139,13 +139,25 @@ describe('StandCounter', () => {
     expect(c.finish()).toBe(2);
   });
   it('does not double count fast bounces under the minimum time', () => {
-    expect(run([0, 1, 0, 1, 0, 1], 100).reps).toBe(1);
+    expect(run([0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1], 60).reps).toBe(1);
   });
   it('flags stands made with the arms uncrossed', () => {
     const c = run(stand(3), 100, { armsOut: true });
     expect(c.reps).toBe(3);
     expect(c.armsFlags).toBe(3);
     expect(run(stand(3)).armsFlags).toBe(0);
+  });
+  it('is not thrown off by a single bad landmark frame', () => {
+    const c = new StandCounter();
+    for (let i = 0; i < 20; i++) c.calibrate(sidePose(0));
+    const heights = stand(10);
+    heights.forEach((h, i) => {
+      const lm = sidePose(h);
+      if (i === 5) { lm[23] = { ...lm[23], y: lm[23].y + 0.08 }; lm[24] = { ...lm[24], y: lm[24].y + 0.08 }; } // hip glitches low
+      if (i === 40) { lm[25] = { ...lm[25], y: lm[25].y + 0.18 }; lm[26] = { ...lm[26], y: lm[26].y + 0.18 }; } // knee glitches low
+      c.update(lm, i * 100);
+    });
+    expect(c.reps).toBe(10);
   });
   it('reports tracking confidence when the body is lost', () => {
     const c = new StandCounter();

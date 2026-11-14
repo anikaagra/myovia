@@ -1,4 +1,4 @@
-import { normFor, gripCutoff, asmCutoff, LEAN_SHARE, MIN_WEIGHT_CHANGE, GRIP_DROP } from './norms.js';
+import { normFor, gripCutoff, asmCutoff, LEAN_SHARE, MIN_WEIGHT_CHANGE, GRIP_DROP, LEAN_DROP_NO_WEIGHT } from './norms.js';
 
 // Draft clinical rules. Thresholds must be set with clinical advisors before launch.
 export const TIERS = {
@@ -27,7 +27,7 @@ export function computeTier(p, today = new Date()) {
   return { tier: reasons.length ? 'higher' : 'standard', reasons };
 }
 
-const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const monthName = (iso) => new Date(iso).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
 const r1 = (n) => Math.round(n * 10) / 10;
 const pct = (f) => `${Math.round(f * 100)}%`;
@@ -43,17 +43,26 @@ function goalPhrase(goal) {
 export function evaluateFunction(p, history, c) {
   const t = TIERS[p.tier] ?? TIERS.standard;
   const norm = normFor(p.age, p.sex);
-  const first = history[0];
+  // Baseline: the first check made on a normal day. A check where the patient slept badly or felt unwell
+  // is never used as a baseline, so a rough first day can't hide a later decline.
+  const usable = history.filter((h) => !h.flagged);
+  const first = usable[0] ?? history[0];
   const last = history[history.length - 1];
   const baseline = first ? first.stands : c.stands;
   const drop = baseline - c.stands;
+  // Also compare with the patient's best normal-day result, so improving and then falling back is noticed.
+  const best = usable.length ? Math.max(...usable.map((h) => h.stands)) : c.stands;
+  const dropFromBest = best - c.stands;
   const belowNorm = c.stands < norm.cutoff;
   const newlyBelow = belowNorm && !(last && last.stands < norm.cutoff);
-  const state = drop >= t.checkinDrop ? 'checkin' : drop >= t.watchDrop || newlyBelow ? 'watch' : 'steady';
-  const normText = `CDC STEADI norm for ${sexWord(p.sex)} ${norm.band}: ${norm.cutoff} or more${norm.extrapolated ? ' (extrapolated; STEADI starts at 60)' : ''}`;
+  const state = drop >= t.checkinDrop ? 'checkin'
+    : drop >= t.watchDrop || newlyBelow || dropFromBest >= t.checkinDrop ? 'watch' : 'steady';
+  const normText = `CDC STEADI norm for ${sexWord(p.sex)} ${norm.band}: ${norm.cutoff} or more${norm.extrapolated ? ` (extrapolated; STEADI covers ages 60–94)` : ''}`;
   const reasons = [];
   if (drop >= t.watchDrop) reasons.push(`Stands fell from ${baseline} to ${c.stands} since ${monthName(first.createdAt)}`);
+  if (drop < t.watchDrop && dropFromBest >= t.checkinDrop) reasons.push(`Stands fell from a best of ${best} to ${c.stands}`);
   if (newlyBelow) reasons.push(`Newly below the ${normText}`);
+  else if (belowNorm) reasons.push(`Still below the ${normText}`);
   return {
     state, measured: true, value: c.stands, baseline, change: first ? c.stands - baseline : null,
     belowNorm, normCutoff: norm.cutoff, normBand: norm.band, normText, reasons,
@@ -89,8 +98,12 @@ export function evaluateMass(p, history, c) {
   const dL = base.leanMassLb - c.leanMassLb;
   const enough = dW >= Math.max(MIN_WEIGHT_CHANGE.lb, MIN_WEIGHT_CHANGE.fraction * base.weightLb);
   if (!enough) {
-    return { ...out, state: lowMuscle ? 'watch' : 'steady', leanShare: null, baselineDate: base.createdAt, weightLost: r1(dW), leanLost: r1(dL), reasons,
-      patientLine: `Lean mass ${r1(c.leanMassLb)} lb. Not enough weight change yet to compare.` };
+    // Muscle can fall while weight holds steady (or rises). Flag a clear lean-mass drop on the same device.
+    const leanDrop = dL >= Math.max(LEAN_DROP_NO_WEIGHT.lb, LEAN_DROP_NO_WEIGHT.fraction * base.leanMassLb);
+    if (leanDrop) reasons.push(`Lean mass fell ${r1(dL)} lb since ${monthName(base.createdAt)} while weight changed ${r1(-dW) >= 0 ? '+' : ''}${r1(-dW)} lb (${out.methodLabel})`);
+    return { ...out, state: leanDrop || lowMuscle ? 'watch' : 'steady', leanShare: null, baselineDate: base.createdAt, weightLost: r1(dW), leanLost: r1(dL), reasons,
+      patientLine: leanDrop ? `Lean mass ${r1(c.leanMassLb)} lb, down ${r1(dL)} lb even though your weight held about steady.`
+        : `Lean mass ${r1(c.leanMassLb)} lb. Not enough weight change yet to compare.` };
   }
   const share = Math.max(0, dL) / dW;
   const state = worst(share >= LEAN_SHARE.checkin ? 'checkin' : share >= LEAN_SHARE.watch ? 'watch' : 'steady', lowMuscle ? 'watch' : null);
@@ -154,7 +167,15 @@ export function evaluateCheck(p, history, c) {
   if (state !== 'checkin' && watches >= 2) { state = 'checkin'; reasons.push('Two measures changed at the same check'); }
   if (state === 'watch' && last && last.state === 'watch' && !last.flagged) { state = 'checkin'; reasons.push('Watch at two checks in a row'); }
 
-  const flagged = Boolean(c.sleptPoorly || c.painOrIll) && state !== 'steady';
+  // A rough day (poor sleep, pain, illness) softens a result to Watch and retests in a week, so one bad day
+  // doesn't alarm anyone. It never hides a large decline: a drop at the Check-in level still flags the care team,
+  // and a second rough-day result in a row escalates instead of softening again.
+  const rough = Boolean(c.sleptPoorly || c.painOrIll) && state !== 'steady';
+  const bigDrop = domains.function.state === 'checkin' || domains.mass.state === 'checkin' || domains.grip.state === 'checkin';
+  const repeatRough = rough && last && last.flagged && last.state !== 'steady';
+  if (rough && repeatRough) { state = 'checkin'; reasons.push('Two checks in a row on a rough day with lower results'); }
+  else if (rough && bigDrop) reasons.push('Patient reported a rough day, but the drop is large enough to flag');
+  const flagged = rough && !repeatRough && !bigDrop;
   if (flagged) state = 'watch';
   const providerFlag = state === 'checkin';
 

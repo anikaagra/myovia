@@ -58,8 +58,8 @@ test('higher tier reaches check in sooner, but a 1-stand drop is noise for every
   assert.equal(run(maria, [14, 11]).r.state, 'watch');
 });
 
-test('readiness flag never flags the provider and retests in a week', () => {
-  const { r } = run(maria, [15, 11], { painOrIll: true });
+test('readiness flag softens a moderate drop, never flags the provider, retests in a week', () => {
+  const { r } = run(maria, [15, 12], { painOrIll: true });
   assert.equal(r.state, 'watch');
   assert.equal(r.flagged, true);
   assert.equal(r.providerFlag, false);
@@ -165,8 +165,44 @@ test('a mass-driven watch gives a protein-first action', () => {
   assert.match(r.reason, /Based on your body scan/);
 });
 
-test('readiness flag still overrides a combined check in', () => {
+test('a rough day never hides a large decline', () => {
   const r = seq(maria, [scan(14, 200, 110), scan(14, 190, 103, { painOrIll: true })]);
-  assert.equal(r.state, 'watch');
-  assert.equal(r.providerFlag, false);
+  assert.equal(r.state, 'checkin', 'lean share 70% still flags');
+  assert.equal(r.providerFlag, true);
+  const { r: big } = run(maria, [15, 11], { painOrIll: true });
+  assert.equal(big.state, 'checkin');
+  assert.ok(big.reasons.some((x) => /rough day/.test(x)));
+});
+
+test('two rough-day results in a row escalate instead of softening again', () => {
+  const p = maria; const h = [];
+  h.push(evaluateCheck(p, h, { stands: 15, createdAt: '2026-01-01T00:00:00Z' }));
+  h.push(evaluateCheck(p, h, { stands: 12, createdAt: '2026-02-01T00:00:00Z', sleptPoorly: true }));
+  assert.equal(h[1].state, 'watch');
+  const r = evaluateCheck(p, h, { stands: 12, createdAt: '2026-02-08T00:00:00Z', sleptPoorly: true });
+  assert.equal(r.state, 'checkin');
+  assert.equal(r.providerFlag, true);
+});
+
+test('a rough first day is not used as the baseline', () => {
+  const p = maria; const h = [];
+  h.push(evaluateCheck(p, h, { stands: 6, createdAt: '2026-01-01T00:00:00Z', sleptPoorly: true }));
+  h.push(evaluateCheck(p, h, { stands: 16, createdAt: '2026-02-01T00:00:00Z' }));
+  const r = evaluateCheck(p, h, { stands: 12, createdAt: '2026-03-01T00:00:00Z' });
+  assert.equal(r.state, 'checkin', '16 → 12 is a 4-stand drop from the first normal day');
+});
+
+test('falling back from a personal best is noticed', () => {
+  assert.equal(run(maria, [10, 18, 13]).r.state, 'watch');
+});
+
+test('lean mass falling while weight holds steady is flagged', () => {
+  const r = seq(maria, [scan(14, 200, 110, { bodyCompMethod: 'dexa' }), scan(14, 201, 104, { bodyCompMethod: 'dexa' })]);
+  assert.equal(r.domains.mass.state, 'watch');
+  assert.match(r.reasons.join(' '), /Lean mass fell 6 lb/);
+});
+
+test('retest dates are calendar days in UTC', () => {
+  const { r } = run(maria, [14]);
+  assert.equal(r.retestDate, '2026-01-29');
 });

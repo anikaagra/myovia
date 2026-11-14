@@ -2,7 +2,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
-import { seed, DEMO_STAFF } from '../src/seed.js';
+import { seed, DEMO_STAFF, DEMO_ADMIN_EMAIL } from '../src/seed.js';
+
+process.env.NODE_ENV = 'test';
+process.env.RISE_DEMO_ADMIN_PASSWORD = 'admin-password-for-tests';
 
 // Fake Claude client: records calls and returns a tool_use block shaped like the real API.
 const calls = [];
@@ -40,6 +43,7 @@ const call = (method, p, { body, token } = {}) => fetch(base + p, {
 const post = (p, body, token) => call('POST', p, { body, token });
 const get = (p, token) => call('GET', p, { token });
 const staffLogin = async () => (await (await post('/api/staff/login', { email: DEMO_STAFF.email, password: DEMO_STAFF.password })).json()).token;
+const adminLogin = async () => (await (await post('/api/staff/login', { email: DEMO_ADMIN_EMAIL, password: 'admin-password-for-tests' })).json()).token;
 const enroll = async (extra = {}) => (await post('/api/patients', { providerCode: 'DEMO42', firstName: 'Ana', age: 66, sex: 'female', menopause: 'yes',
   medication: 'semaglutide', startDate: '2026-08-01', startWeightLb: 200, currentWeightLb: 190, heightIn: 64, activity: 'some', falls: 'none',
   jointPain: 'no', goal: 'walk my dog', ...extra })).json();
@@ -186,7 +190,7 @@ test('AI is off without a key and every feature falls back', async () => {
 });
 
 test('AI features work once a clinic admin adds a key, with safety checks', async () => {
-  const staff = await staffLogin();
+  const staff = await adminLogin();
   const badKey = await call('PUT', '/api/clinic/settings/ai-key', { token: staff, body: { key: 'hello' } });
   assert.equal(badKey.status, 400);
   const ok = await (await call('PUT', '/api/clinic/settings/ai-key', { token: staff, body: { key: 'sk-ant-api03-' + 'a'.repeat(40) } })).json();
@@ -231,7 +235,8 @@ test('AI features work once a clinic admin adds a key, with safety checks', asyn
 });
 
 test('nurses cannot change admin settings', async () => {
-  const admin = await staffLogin();
+  assert.equal((await call('PUT', '/api/clinic/settings/ai-key', { token: await staffLogin(), body: { key: '' } })).status, 403, 'the public demo login is a nurse');
+  const admin = await adminLogin();
   const r = await post('/api/clinic/staff', { name: 'Nia', email: 'nia@demo.rise', password: 'temporary-pass' }, admin);
   assert.equal(r.status, 201);
   const nurse = (await (await post('/api/staff/login', { email: 'nia@demo.rise', password: 'temporary-pass' })).json()).token;
@@ -249,7 +254,7 @@ test('calendar reminder', async () => {
 });
 
 test('staff can change their password, and admins can remove staff', async () => {
-  const admin = await staffLogin();
+  const admin = await adminLogin();
   const added = await (await post('/api/clinic/staff', { name: 'Kim', email: 'kim@demo.rise', password: 'first-password' }, admin)).json();
   const kim = (await (await post('/api/staff/login', { email: 'kim@demo.rise', password: 'first-password' })).json()).token;
   assert.equal((await post('/api/staff/password', { current: 'wrong', next: 'second-password' }, kim)).status, 400);
@@ -258,4 +263,44 @@ test('staff can change their password, and admins can remove staff', async () =>
   assert.equal((await call('DELETE', `/api/clinic/staff/${added.id}`, { token: admin })).status, 204);
   assert.equal((await get('/api/clinic/patients', kim)).status, 401, 'removed staff are signed out');
   assert.equal((await post('/api/staff/login', { email: 'kim@demo.rise', password: 'second-password' })).status, 401);
+});
+
+test('the server AI key is only used by allowed clinics', async () => {
+  const db2 = openDb(':memory:'); seed(db2);
+  const s2 = createApp(db2, { aiClient: fakeClient, anthropicKey: 'sk-ant-server-key-xxxxxxxxxxxxxxxxxxxx', aiClinics: 'DEMO42' }).listen(0);
+  await new Promise((r) => s2.once('listening', r));
+  const b2 = `http://127.0.0.1:${s2.address().port}`;
+  const p2 = (path, body, token) => fetch(b2 + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+  const other = await (await p2('/api/clinics', { clinicName: 'Self signup', name: 'X', email: 'x@self.test', password: 'long-enough-pw' })).json();
+  assert.equal(other.clinic.aiEnabled, false, 'a self-signup clinic does not get the server key');
+  const demo = await (await p2('/api/staff/login', { email: DEMO_STAFF.email, password: DEMO_STAFF.password })).json();
+  assert.equal(demo.clinic.aiEnabled, true);
+  s2.close();
+});
+
+test('deleting a patient removes their health data and AI text', async () => {
+  const admin = await adminLogin();
+  await call('PUT', '/api/clinic/settings/ai-key', { token: admin, body: { key: 'sk-ant-api03-' + 'b'.repeat(40) } });
+  const p = await enroll();
+  const c = await (await post('/api/me/checks', { stands: 12, weightLb: 190 }, p.token)).json();
+  await get(`/api/me/checks/${c.id}/coach`, p.token);
+  await get(`/api/clinic/patients/${p.id}/note`, admin);
+  assert.ok(db.prepare("SELECT COUNT(*) n FROM ai_outputs WHERE subject_id IN (?, ?)").get(p.id, String(c.id)).n >= 1);
+  await call('DELETE', '/api/me', { token: p.token });
+  const row = db.prepare('SELECT * FROM patients WHERE id = ?').get(p.id);
+  for (const col of ['start_weight_lb', 'current_weight_lb', 'height_in', 'start_date', 'goal', 'menopause']) assert.equal(row[col], null, col);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM ai_outputs WHERE subject_id IN (?, ?)").get(p.id, String(c.id)).n, 0);
+  await call('PUT', '/api/clinic/settings/ai-key', { token: admin, body: { key: '' } });
+});
+
+test('a large upload is refused before sign-in', async () => {
+  const r = await fetch(base + '/api/me/read-report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: 'A'.repeat(2_000_000), mediaType: 'image/jpeg' }) });
+  assert.equal(r.status, 401);
+});
+
+test('risk tier is recomputed at each check', async () => {
+  const p = await enroll({ age: 60, sex: 'male', menopause: undefined, startDate: new Date(Date.now() - 70 * 864e5).toISOString().slice(0, 10), startWeightLb: 250, currentWeightLb: 245 });
+  assert.equal(p.tier, 'standard');
+  const c = await (await post('/api/me/checks', { stands: 14, weightLb: 210 }, p.token)).json();
+  assert.equal(c.patient.tier, 'higher', 'losing 16% in 10 weeks is fast weight loss');
 });

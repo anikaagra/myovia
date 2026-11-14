@@ -48,7 +48,9 @@ export async function demoAiAvailable() { return Boolean(demoKey.get() || (await
 async function ask<Out>(system: string, tool: { name: string; input_schema: unknown }, user: string, opts: Record<string, unknown> = {}): Promise<Out | null> {
   if (demoKey.get()) {
     const images = (opts.images as Blob[] | undefined) ?? [];
-    const blocks = await Promise.all(images.map(async (b) => ({ type: 'image', source: { type: 'base64', media_type: b.type, data: await blobToBase64(b) } })));
+    const blocks = await Promise.all(images.map(async (b) => ({
+      type: b.type === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: b.type, data: await blobToBase64(b) },
+    })));
     return direct<Out>(system, tool, images.length ? [...blocks, { type: 'text', text: user }] : user);
   }
   const s = await demoSampler();

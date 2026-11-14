@@ -7,7 +7,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'node:crypto';
-import { unsafeText, clip, patientFacts, providerFacts, cleanReading, COACH_SYSTEM, COACH_TOOL, NOTE_SYSTEM, NOTE_TOOL, READ_SYSTEM, READ_TOOL } from './aiText.js';
+import { unsafeText, contradictsState, inventedNumbers, clip, patientFacts, providerFacts, cleanReading, COACH_SYSTEM, COACH_TOOL, NOTE_SYSTEM, NOTE_TOOL, READ_SYSTEM, READ_TOOL } from './aiText.js';
 
 export { unsafeText, cleanReading, templateNote } from './aiText.js';
 
@@ -71,7 +71,7 @@ export function createAi(db, { getKey, clientFor = (apiKey) => new Anthropic({ a
           tool: COACH_TOOL,
         });
         const text = [input.summary, input.why, ...(input.tips ?? [])].join(' ');
-        if (unsafeText(text) || !input.summary || !input.why) {
+        if (unsafeText(text) || !input.summary || !input.why || contradictsState(text, check.state, check.flagged) || inventedNumbers(text, facts).length) {
           const e = new Error('AI message did not pass safety checks'); e.status = 502; e.code = 'ai_unsafe'; throw e;
         }
         return { summary: clip(input.summary, 280), why: clip(input.why, 400), tips: (input.tips ?? []).slice(0, 3).map((t) => clip(t, 160)), model, ai: true };
@@ -90,8 +90,14 @@ export function createAi(db, { getKey, clientFor = (apiKey) => new Anthropic({ a
         });
         // The note is for clinicians, but the suggested patient message must meet patient-facing rules.
         const patientMessage = unsafeText(input.patientMessage) ? '' : input.patientMessage;
+        // The state line is written by code and leads the summary, so the note can't misstate the result.
+        const last = p.checks[p.checks.length - 1];
+        const stateLine = `Rise state ${last.createdAt.slice(0, 10)}: ${{ steady: 'Steady', watch: 'Watch', checkin: 'Check in' }[last.state]}${last.flagged ? ' (rough-day check)' : ''}.`;
+        if (contradictsState(input.summary, last.state, true) && last.state !== 'steady') {
+          const e = new Error('AI note contradicted the result'); e.status = 502; e.code = 'ai_unsafe'; throw e;
+        }
         return {
-          summary: clip(input.summary, 600), measures: clip(input.measures, 1200), assessment: clip(input.assessment, 800),
+          summary: clip(`${stateLine} ${input.summary}`, 700), measures: clip(input.measures, 1200), assessment: clip(input.assessment, 800),
           plan: clip(input.plan, 800), patientMessage: clip(patientMessage, 400), model, ai: true,
         };
       });

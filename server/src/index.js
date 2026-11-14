@@ -7,7 +7,11 @@ import { createApp } from './app.js';
 import { seed } from './seed.js';
 
 const db = openDb();
-if (process.env.RISE_SEED !== 'false') seed(db);
+// Demo clinic DEMO42: on by default in development, off in production unless RISE_SEED=true.
+const seedOn = process.env.RISE_SEED ? process.env.RISE_SEED === 'true' : process.env.NODE_ENV !== 'production';
+if (seedOn) seed(db);
+if (!process.env.RISE_SECRET) console.warn('RISE_SECRET is not set: clinic AI keys will be stored unencrypted.');
+if (process.env.ANTHROPIC_API_KEY && !process.env.RISE_AI_CLINICS) console.warn('ANTHROPIC_API_KEY is set but RISE_AI_CLINICS is empty, so no clinic uses it. Set RISE_AI_CLINICS=DEMO42 (or *).');
 const app = createApp(db);
 
 // Serve the built web app in production.

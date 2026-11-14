@@ -14,7 +14,7 @@ export function normFor(age, sex) {
   return {
     cutoff: row[2],
     band: `${row[0]}–${row[1]}`,
-    extrapolated: age < 60,
+    extrapolated: age < 60 || age > 94,
     // When sex is "other" or unspecified, Rise uses the female table, which flags earlier.
     table: sex === 'male' ? 'male' : 'female',
   };
@@ -34,6 +34,10 @@ export const LEAN_SHARE = { watch: 0.4, checkin: 0.6 };
 
 // A lean-share figure is only meaningful once enough weight has come off to be larger than measurement noise.
 export const MIN_WEIGHT_CHANGE = { lb: 4, fraction: 0.02 };
+
+// Lean mass falling while weight holds steady: flag a drop of at least 3 lb and 3% of lean mass on the same device.
+// Draft; typical same-device day-to-day variation for BIA is around 1-2 lb.
+export const LEAN_DROP_NO_WEIGHT = { lb: 3, fraction: 0.03 };
 
 // Grip: change from the patient's own first grip. Draft; typical test-retest variation is roughly 5-10%.
 export const GRIP_DROP = { watch: 0.1, checkin: 0.2 };

@@ -14,8 +14,18 @@ services:
         value: claude-sonnet-5-5
       - key: RISE_AI_FAST_MODEL
         value: claude-haiku-5-5
+      # Which clinics may use the server's key (comma-separated codes, or *). Self-signup clinics add their own.
+      - key: RISE_AI_CLINICS
+        value: DEMO42
+      # Encrypts clinic AI keys stored in the database.
+      - key: RISE_SECRET
+        generateValue: true
+      # Demo clinic DEMO42 with fictional patients. Set to "false" before enrolling real patients.
       - key: RISE_SEED
         value: "true"
+      # Password for the demo clinic's admin (admin@demo.rise). If unset, one is generated and printed in the logs.
+      - key: RISE_DEMO_ADMIN_PASSWORD
+        sync: false
     disk:
       name: rise-data
       mountPath: /data
