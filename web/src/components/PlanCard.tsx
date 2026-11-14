@@ -19,7 +19,7 @@ export function PlanCard({ plan, open = false }: { plan: Plan; open?: boolean })
         {p && <div className="plan-stat"><span className="rise-label">Protein</span><span className="rise-num plan-stat__n">{p.low}–{p.high} g</span><span className="rise-caption">a day, about {p.perMeal} g a meal</span></div>}
         <div className="plan-stat"><span className="rise-label">Strength</span><span className="rise-num plan-stat__n">{plan.focus === 'rest' ? 'Light' : `${r.sessionsPerWeek}×`}</span><span className="rise-caption">{plan.focus === 'rest' ? 'only if you feel well' : `a week, ${r.minutes} min`}</span></div>
       </div>
-      {p && <p className="rise-caption" style={{ margin: 0 }}>A palm-sized portion of chicken, fish, tofu or Greek yogurt is about 25–30 g. Protein target based on {p.basis}.</p>}
+      {p && <p className="rise-caption" style={{ margin: 0 }}>A palm-sized portion of chicken, fish, tofu or Greek yogurt is about 25–30 g. Protein target based on {p.basis}. {p.caution}</p>}
       <details open={open}>
         <summary className="rise-label" style={{ cursor: 'pointer' }}>Your strength routine</summary>
         <ul className="moves">

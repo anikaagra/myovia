@@ -68,6 +68,7 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
     let prevGray: Float32Array | null = null;
     let lm: Point[] | null = null;
     let people = 0;
+    let readyCount = 0;
     let lastPose = 0, lastStats = 0, readySince = 0, endAt = 0, lastFix = '', lastRepAt = 0, lastLostSay = 0, lastArmsSay = 0;
     const counter = new StandCounter();
     const pts: { x: number; y: number }[] = [];
@@ -149,8 +150,8 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
           setChecks(r.checks);
           if (DEBUG) setDebug(`sharp ${stats.sharpness.toFixed(0)} detail ${stats.detail.toFixed(3)} p5 ${stats.p5} p95 ${stats.p95} lum ${stats.luminance.toFixed(0)} clip ${(stats.clipped * 100).toFixed(1)}% person ${input.personLuminance?.toFixed(0) ?? '–'} tilt ${s.tilt ? `${s.tilt.beta.toFixed(0)}/${s.tilt.gamma.toFixed(0)}` : '–'} shake ${s.shaking?.toFixed(1) ?? '–'} people ${people}`);
           if (r.current && r.current.fix !== lastFix) { lastFix = r.current.fix; say(r.current.fix); }
-          if (r.ready) { lastFix = ''; if (!readySince) readySince = now; if (now - readySince >= READY_HOLD_MS) startCountdown(); }
-          else readySince = 0;
+          if (r.ready) { lastFix = ''; readyCount++; if (!readySince) readySince = now; if (now - readySince >= READY_HOLD_MS && readyCount >= 5) startCountdown(); }
+          else { readySince = 0; readyCount = 0; }
         }
         if (phaseRef.current === 'recording') {
           if (counter.update(lm, now)) { setReps(counter.reps); say(String(counter.reps), { force: true }); lastRepAt = now; setHint(null); }

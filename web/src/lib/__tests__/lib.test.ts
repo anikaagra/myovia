@@ -215,10 +215,17 @@ describe('CheckSmoother', () => {
     const s = new CheckSmoother(3, 2);
     const bad = evaluateFrame({ ...good, sharpness: 5, detail: 0.01 });
     const ok = evaluateFrame(good);
-    expect(s.update(bad).ready).toBe(true);
-    expect(s.update(bad).ready).toBe(true);
+    let r = s.update(bad);
+    expect(r.ready).toBe(false);
+    expect(r.current).toBe(null);
+    expect(s.update(bad).current).toBe(null);
     expect(s.update(bad).current?.id).toBe('lens');
     expect(s.update(ok).current?.id).toBe('lens');
     expect(s.update(ok).ready).toBe(true);
+  });
+  it('is not ready until every check has passed twice in a row', () => {
+    const s = new CheckSmoother(3, 2);
+    expect(s.update(evaluateFrame(good)).ready).toBe(false);
+    expect(s.update(evaluateFrame(good)).ready).toBe(true);
   });
 });

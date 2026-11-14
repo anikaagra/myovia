@@ -15,21 +15,23 @@ const r5 = (n) => Math.round(n / 5) * 5;
 export function proteinTarget(p, weightLb, leanMassLb = null) {
   const actualKg = (weightLb ?? p.currentWeightLb ?? p.startWeightLb ?? 0) * LB_TO_KG;
   if (!actualKg) return null;
-  let low, high, basis;
-  if (leanMassLb) {
-    const mid = leanMassLb * LB_TO_KG * PROTEIN.gPerKgLean;
-    low = r5(mid * 0.9); high = r5(mid * 1.1); basis = 'your lean mass';
-  } else {
-    let refKg = actualKg; basis = 'your weight';
-    if (p.heightIn) {
-      const m = p.heightIn * 0.0254;
-      if (actualKg / (m * m) >= 30) { refKg = PROTEIN.referenceBmi * m * m; basis = 'a healthy weight for your height'; }
-    }
-    low = r5(refKg * PROTEIN.gPerKg[0]); high = r5(refKg * PROTEIN.gPerKg[1]);
+  let refKg = actualKg, basis = 'your weight';
+  if (p.heightIn) {
+    const m = p.heightIn * 0.0254;
+    if (actualKg / (m * m) >= 30) { refKg = PROTEIN.referenceBmi * m * m; basis = 'a healthy weight for your height'; }
   }
+  let low = refKg * PROTEIN.gPerKg[0], high = refKg * PROTEIN.gPerKg[1];
+  if (leanMassLb) {
+    // ~1.5 g per kg of lean mass; never below the weight-based range.
+    const leanKg = leanMassLb * LB_TO_KG;
+    low = Math.max(low, leanKg * PROTEIN.gPerKgLean * 0.9); high = Math.max(high, leanKg * PROTEIN.gPerKgLean * 1.1);
+    basis = `${basis} and lean mass`;
+  }
+  low = r5(low); high = r5(high);
   // Stay within a sensible absolute band so very small or very large bodies get practical numbers.
   low = Math.max(70, Math.min(low, 160)); high = Math.max(low + 10, Math.min(high, 180));
-  return { low, high, perMeal: r5(((low + high) / 2) / 3), basis, source: PROTEIN.source };
+  return { low, high, perMeal: r5(((low + high) / 2) / 3), basis, source: PROTEIN.source,
+    caution: 'If you have kidney disease, ask your care team before eating more protein.' };
 }
 
 const MOVES = {

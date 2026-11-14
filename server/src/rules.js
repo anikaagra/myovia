@@ -124,8 +124,8 @@ function actionFor(state, domains, p, flagged) {
   if (state === 'checkin') return 'Your care team will reach out this week. Until then, keep up gentle strength moves and protein at every meal.';
   const knees = p.jointPain === 'yes';
   const low = p.activity === 'rarely' || p.activity === 'some';
-  const strength = knees ? 'the chair strength routine twice a week (gentle on your knees)' : low ? 'two 15-minute strength sessions a week' : 'a third strength session each week';
-  if (state === 'steady') return knees ? 'Keep going: protein at every meal and your chair strength routine twice a week.' : 'Keep going: protein at every meal and two strength sessions a week.';
+  const strength = knees ? 'the chair strength routine 3 times a week (gentle on your knees)' : low ? 'three 15-minute strength sessions a week' : 'a third strength session each week';
+  if (state === 'steady') return knees ? 'Keep going: protein at every meal and your chair strength routine 3 times a week.' : 'Keep going: protein at every meal and strength moves 3 times a week.';
   if (domains.mass.state === 'watch') return `${p.firstName}, add protein at every meal, about a palm-sized portion, and ${strength}. Losing weight more slowly can also help; ask your care team.`;
   if (domains.grip.state === 'watch' && domains.function.state !== 'watch') return `${p.firstName}, add ${strength}, including carrying or pulling moves, and protein at every meal.`;
   return `${p.firstName}, try ${strength}, and aim for protein at every meal.`;

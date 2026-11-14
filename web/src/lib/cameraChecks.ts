@@ -133,20 +133,25 @@ export class CheckSmoother {
   constructor(private failAfter = 3, private passAfter = 2) {}
 
   update(raw: ReturnType<typeof evaluateFrame>) {
+    // A check only counts as done after it has passed `passAfter` times in a row, so a slow phone that
+    // analyses one frame a second can't start recording on a couple of lucky frames.
     const fixes = {} as Record<CheckId, string | null>;
+    const pending = new Set<CheckId>();
     for (const c of raw.checks) {
-      const isFail = c.status !== 'ok';
-      if (isFail) {
+      if (c.status !== 'ok') {
         this.passes.set(c.id, 0);
         const n = (this.fails.get(c.id) ?? 0) + 1; this.fails.set(c.id, n);
         if (n >= this.failAfter || this.failing.has(c.id)) this.failing.set(c.id, c.fix);
+        else pending.add(c.id);
       } else {
         this.fails.set(c.id, 0);
         const n = (this.passes.get(c.id) ?? 0) + 1; this.passes.set(c.id, n);
-        if (n >= this.passAfter) this.failing.delete(c.id);
+        if (n >= this.passAfter) this.failing.delete(c.id); else pending.add(c.id);
       }
       fixes[c.id] = this.failing.get(c.id) ?? null;
     }
-    return toChecks(fixes);
+    const out = toChecks(fixes);
+    const checks = out.checks.map((c) => (c.status === 'ok' && pending.has(c.id) ? { ...c, status: 'wait' as const } : c));
+    return { checks, current: out.current, ready: out.ready && pending.size === 0 };
   }
 }

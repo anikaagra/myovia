@@ -43,7 +43,7 @@ export type ProviderList = { code: string; name: string; patients: ProviderPatie
 export type Move = { name: string; dose: string; note?: string };
 export type Plan = {
   focus: 'rest' | 'mass' | 'grip' | 'legs' | 'maintain';
-  protein: { low: number; high: number; perMeal: number; basis: string; source: string } | null;
+  protein: { low: number; high: number; perMeal: number; basis: string; source: string; caution?: string } | null;
   routine: { sessionsPerWeek: number; minutes: number; moves: Move[]; aerobicMinutesPerWeek: number };
   days: { day: string; items: string[] }[];
 };
