@@ -13,7 +13,7 @@ export function Welcome() {
         <circle className="dot" cx="300" cy="56" r="28" />
       </svg>
       <h1 className="display-xl">Are you losing fat, or muscle?</h1>
-      <p className="rise-body-lg">Myovia is a 3-minute muscle check on your phone for people taking GLP-1 medications. You stand up from a chair for 30 seconds, and we tell you whether your plan is protecting your muscle.</p>
+      <p className="rise-body-lg">Myovia is a 3-minute muscle check on your phone for people taking GLP-1 medications. A quick body scan, a 30-second chair test and an optional grip test show whether your plan is protecting your muscle.</p>
       <ul className="stack" style={{ margin: 0, paddingLeft: 24 }}>
         <li>Your care team sees your results, so they know when to check in.</li>
         <li>Your video stays on your phone. Only the count is saved.</li>
