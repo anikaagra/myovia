@@ -19,7 +19,7 @@ import { demoCoach, demoNote, demoReadReport, demoAiAvailable, demoKey } from '.
 type Row = Check & { patientId: string };
 type Base = Omit<Patient, 'checks' | 'nextDue' | 'checkEveryDays'>;
 type Store = { patients: Base[]; checks: Row[]; followUps: FollowUp[]; audit: AuditRow[]; nextId: number; coach: Record<string, Coach> };
-const KEY = 'rise.demo.v4';
+const KEY = 'rise.demo.v5';
 const CLINIC = { code: 'DEMO42', name: 'Bay Area Weight Care (demo)' };
 export const DEMO_LOGIN = { email: 'nurse@demo.rise', password: 'rise-demo-2026' };
 const STAFF: Staff = { id: 'staff-demo', name: 'Jordan Lee, RN', email: DEMO_LOGIN.email, role: 'admin' };
@@ -55,7 +55,7 @@ function seed(): Store {
     note: 'Called Dennis. Starting a PT strength program next week.', createdAt: demoDaysAgo(5) });
   // Linda's earlier message from her nurse, so the example patient's home screen shows the loop closing.
   s.followUps.push({ id: s.nextId++, patientId: 'demo-linda', checkId: null, staffId: STAFF.id, staffName: STAFF.name, kind: 'message',
-    note: 'Hi Linda, thanks for doing your check. Let’s add a protein shake at breakfast and the chair routine 3 days a week. I’ll call you Thursday.', createdAt: demoDaysAgo(33) });
+    note: 'Hi Linda, thanks for doing your check. Let’s add a protein shake at breakfast and the chair routine 3 days a week. I’ll call you Thursday.', createdAt: demoDaysAgo(43) });
   return s;
 }
 
