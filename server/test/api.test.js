@@ -170,7 +170,7 @@ test('records where body composition came from', async () => {
   const staff = await staffLogin();
   const d = await (await get(`/api/clinic/patients/${p.id}`, staff)).json();
   assert.deepEqual(d.checks[0].bodyCompDetail, { source: 'rise-scan', neckIn: 13.4, waistIn: 36.2, hipIn: 43.1 });
-  assert.equal(d.checks[0].domains.mass.methodLabel, 'Rise phone scan');
+  assert.equal(d.checks[0].domains.mass.methodLabel, 'Myovia phone scan');
   assert.equal(d.checks[0].domains.mass.estimate, true);
 });
 

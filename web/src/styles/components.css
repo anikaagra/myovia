@@ -1,4 +1,4 @@
-/* Rise component styles. Every value comes from tokens.css. */
+/* Myovia component styles. Every value comes from tokens.css. */
 .rise { font-family: var(--font-sans); color: var(--ink); background: var(--paper); }
 .rise *, .rise *::before, .rise *::after { box-sizing: border-box; }
 .rise-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -46,7 +46,7 @@
 .rise-spark .dot { fill: var(--brand); }
 .rise-spark .band { fill: var(--tint); }
 
-/* Rise trace + capture */
+/* Myovia trace + capture */
 .rise-trace .grid { stroke: var(--line); stroke-width: 1; }
 .rise-trace .band { fill: var(--tint); }
 .rise-trace .line { fill: none; stroke: var(--brand); stroke-width: 3; stroke-linejoin: round; }

@@ -17,7 +17,7 @@ export type FrameInput = Partial<LensStats> & {
 };
 
 // Thresholds are set conservatively and each check must fail for about a second (see CheckSmoother) before
-// Rise asks for a fix, so one odd frame never interrupts. Tune on real phones before launch.
+// Myovia asks for a fix, so one odd frame never interrupts. Tune on real phones before launch.
 export const THRESHOLDS = {
   minSharpness: 25, // below this the frame is blurry
   minDetail: 0.06, // blur relative to contrast; a plain wall has low sharpness but normal detail ratio

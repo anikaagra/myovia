@@ -20,7 +20,7 @@ export function startSensors() {
   let shaking: number | null = null;
   const onOrient = (e: DeviceOrientationEvent) => {
     if (e.beta == null || e.gamma == null) return;
-    // In landscape the axes swap; Rise asks for portrait, so only portrait is judged.
+    // In landscape the axes swap; Myovia asks for portrait, so only portrait is judged.
     const portrait = !screen.orientation || screen.orientation.type.startsWith('portrait');
     if (!portrait) { tilt = null; return; }
     tilt = tilt ? { beta: tilt.beta * 0.7 + e.beta * 0.3, gamma: tilt.gamma * 0.7 + e.gamma * 0.3 } : { beta: e.beta, gamma: e.gamma };

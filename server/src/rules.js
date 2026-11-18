@@ -11,7 +11,7 @@ export const STATE_RANK = { checkin: 0, watch: 1, steady: 2 };
 const worst = (...s) => s.filter(Boolean).sort((a, b) => STATE_RANK[a] - STATE_RANK[b])[0] ?? 'steady';
 
 export const METHOD_LABEL = {
-  'rise-scan': 'Rise phone scan', 'scan-app': 'phone body scan app', 'smart-scale': 'smart scale', dexa: 'DEXA scan', 'clinic-bia': 'clinic body composition scale', other: 'other device',
+  'rise-scan': 'Myovia phone scan', 'scan-app': 'phone body scan app', 'smart-scale': 'smart scale', dexa: 'DEXA scan', 'clinic-bia': 'clinic body composition scale', other: 'other device',
 };
 
 export function computeTier(p, today = new Date()) {

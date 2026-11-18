@@ -19,7 +19,7 @@ export function LinkPhone() {
   }
   return (
     <Screen back={{ to: '/', label: 'Back' }}>
-      <div className="stack"><div className="rise-label">New phone</div><h1 className="display">Link this phone to Rise</h1></div>
+      <div className="stack"><div className="rise-label">New phone</div><h1 className="display">Link this phone to Myovia</h1></div>
       <p className="rise-body-lg">Ask your care team for a link code. It's 6 digits and lasts 30 minutes. Your past checks come with you.</p>
       <form className="stack" onSubmit={go}>
         <div className="field"><label className="rise-label" htmlFor="code">Link code</label>

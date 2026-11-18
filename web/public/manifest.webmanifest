@@ -1,6 +1,6 @@
 {
-  "name": "Rise muscle check",
-  "short_name": "Rise",
+  "name": "Myovia muscle check",
+  "short_name": "Myovia",
   "description": "A 3-minute muscle check on your phone for people taking GLP-1 medications.",
   "id": "./",
   "start_url": "./",

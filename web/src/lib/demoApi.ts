@@ -1,4 +1,4 @@
-// In-browser stand-in for the Rise API, used by the shareable demo build (VITE_DEMO=1).
+// In-browser stand-in for the Myovia API, used by the shareable demo build (VITE_DEMO=1).
 // It runs the same rules engine, plans and example data as the server and keeps data in this browser only.
 // AI features use the Claude artifact runtime when the demo runs inside Claude, and fall back to templates elsewhere.
 // @ts-expect-error plain JS module shared with the server
@@ -118,11 +118,11 @@ export const demoApi = {
     delete s.links![digits]; save(); session.set(id);
     return delay(meView(full(id)!));
   },
-  me(): Promise<Me> { const p = currentPatient(); return p ? delay(meView(p)) : fail('This phone is no longer linked to Rise.', 401); },
+  me(): Promise<Me> { const p = currentPatient(); return p ? delay(meView(p)) : fail('This phone is no longer linked to Myovia.', 401); },
   submitCheck(b: Record<string, unknown>): Promise<SubmitResult> {
     const s = load();
     const p = currentPatient();
-    if (!p) return fail('This phone is no longer linked to Rise.', 401);
+    if (!p) return fail('This phone is no longer linked to Myovia.', 401);
     const c = { ...b, stands: Number(b.stands), weightLb: num(b.weightLb), leanMassLb: num(b.leanMassLb), bodyFatPct: num(b.bodyFatPct),
       asmKg: num(b.asmKg), gripKg: num(b.gripKg), bodyCompMethod: typeof b.bodyCompMethod === 'string' && b.bodyCompMethod in METHOD_LABEL ? b.bodyCompMethod : null };
     if (!Number.isInteger(c.stands) || c.stands < 0 || c.stands > 40) return fail('Stands must be a whole number from 0 to 40.');

@@ -197,8 +197,8 @@ export function CameraStage({ onDone, onManual }: { onDone: (c: Capture) => void
         raf = requestAnimationFrame(tick);
       } catch (e) {
         const name = (e as Error).name;
-        setError(name === 'NotAllowedError' ? 'Rise needs your camera to count your stands. On iPhone: Settings › Safari › Camera › Allow, then try again.'
-          : name === 'Insecure' ? 'Your browser blocked the camera because this page is not on a secure link. Open Rise from its https link.'
+        setError(name === 'NotAllowedError' ? 'Myovia needs your camera to count your stands. On iPhone: Settings › Safari › Camera › Allow, then try again.'
+          : name === 'Insecure' ? 'Your browser blocked the camera because this page is not on a secure link. Open Myovia from its https link.'
           : name === 'NotFoundError' ? "We couldn't find a camera on this device."
           : name === 'NotReadableError' ? 'Another app is using the camera. Close it and try again.'
           : "We couldn't start the movement tracker. Check your internet connection and try again.");

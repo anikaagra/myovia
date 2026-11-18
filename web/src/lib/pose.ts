@@ -3,7 +3,7 @@ import { createWithFallbacks } from './visionFiles';
 
 let loading: Promise<PoseLandmarker> | null = null;
 
-/** Loads the on-device pose model once. Video never leaves the phone. Tracks up to 2 people so Rise can ask others to step out. */
+/** Loads the on-device pose model once. Video never leaves the phone. Tracks up to 2 people so Myovia can ask others to step out. */
 export function loadPose(): Promise<PoseLandmarker> {
   if (!loading) {
     loading = createWithFallbacks(async (files, modelAssetPath, delegate) => {

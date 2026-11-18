@@ -41,7 +41,7 @@ export function ReportPhoto({ onDone, onCancel, onTypeInstead }: { onDone: (r: R
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <p className="rise-body-lg">Take a clear photo of your InBody result sheet or DEXA report, flat and in good light. Rise reads the numbers, then you check them.</p>
+      <p className="rise-body-lg">Take a clear photo of your InBody result sheet or DEXA report, flat and in good light. Myovia reads the numbers, then you check them.</p>
       <ul className="stack" style={{ margin: 0, paddingLeft: 24 }}>
         <li>Fill the frame with the page.</li>
         <li>Avoid glare and shadows.</li>

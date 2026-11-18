@@ -19,7 +19,7 @@ type CameraMode = 'real' | 'simulated';
 import type { BodyCompMethod, Patient } from '../../lib/types';
 
 const METHODS: [BodyCompMethod, string][] = [
-  ['rise-scan', 'Rise phone scan'], ['scan-app', 'Another body scan app'], ['smart-scale', 'Smart scale at home'], ['dexa', 'DEXA scan'], ['clinic-bia', "My clinic's body composition scale"], ['other', 'Something else'],
+  ['rise-scan', 'Myovia phone scan'], ['scan-app', 'Another body scan app'], ['smart-scale', 'Smart scale at home'], ['dexa', 'DEXA scan'], ['clinic-bia', "My clinic's body composition scale"], ['other', 'Something else'],
 ];
 const LB_PER_KG = 2.20462;
 
@@ -57,7 +57,7 @@ export function CheckFlow() {
     setWeight(String(r.weightLb)); setLean(String(r.leanMassLb)); setFat(String(r.bodyFatPct)); setAsm(''); setMethod('rise-scan');
     setDetail({ source: 'rise-scan', neckIn: r.neckIn, waistIn: r.waistIn, hipIn: r.hipIn, photoPct: r.estimate.photoPct, formulaPct: r.estimate.formulaPct,
       rangeLow: r.estimate.low, rangeHigh: r.estimate.high, photos: r.photosUsed, warning: r.estimate.warning ? 'yes' : 'no', method: 'Navy circumference + CUN-BAE blend' });
-    setImportNotes([`From your Rise scan (likely ${r.estimate.low}–${r.estimate.high}% body fat). Check the numbers, then continue.`]); setScanMode('review');
+    setImportNotes([`From your Myovia scan (likely ${r.estimate.low}–${r.estimate.high}% body fat). Check the numbers, then continue.`]); setScanMode('review');
   };
   const fromImport = (r: ImportedScan) => {
     if (r.weightLb != null) setWeight(String(r.weightLb));
@@ -248,7 +248,7 @@ export function CheckFlow() {
         <li>Use a firm chair without arms, about 17 inches high (knee height), against a wall so it can't slide.</li>
         <li>Prop your phone upright at hip height, 6 to 8 feet away (2 to 3 steps). Lean it on books or a shelf, not in your hand.</li>
         <li>Turn the chair so your side faces the phone. A half-turn toward it is fine too.</li>
-        <li>Turn your volume up. Rise talks you through it and starts by itself when everything looks right.</li>
+        <li>Turn your volume up. Myovia talks you through it and starts by itself when everything looks right.</li>
       </ol>
       {IS_DEMO && (
         <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>

@@ -20,7 +20,7 @@ export function PatientSettings() {
       const ics = await api.reminderIcs();
       const file = new File([ics], 'rise-check.ics', { type: 'text/calendar' });
       const nav2 = navigator as Navigator & { canShare?: (d: unknown) => boolean };
-      if (nav2.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: 'Rise check reminder' }); return; }
+      if (nav2.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: 'Myovia check reminder' }); return; }
       const url = URL.createObjectURL(file);
       const a = document.createElement('a'); a.href = url; a.download = 'rise-check.ics'; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
@@ -29,7 +29,7 @@ export function PatientSettings() {
 
   return (
     <Screen back={{ to: '/', label: 'Done' }}>
-      <div className="stack"><div className="rise-label">Settings</div><h1 className="display">Your Rise</h1></div>
+      <div className="stack"><div className="rise-label">Settings</div><h1 className="display">Your Myovia</h1></div>
       <ErrorNote message={err} />
       <section className="rise-card stack">
         <h2 className="rise-title">Reminders</h2>
@@ -38,23 +38,23 @@ export function PatientSettings() {
       </section>
       {!installed && (
         <section className="rise-card stack">
-          <h2 className="rise-title">Put Rise on your Home Screen</h2>
+          <h2 className="rise-title">Put Myovia on your Home Screen</h2>
           <ol className="stack" style={{ margin: 0, paddingLeft: 22 }}>
             <li>In Safari, tap the Share button.</li>
             <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
-            <li>Open Rise from its icon. It works like an app, full screen.</li>
+            <li>Open Myovia from its icon. It works like an app, full screen.</li>
           </ol>
         </section>
       )}
       <section className="rise-card stack">
         <h2 className="rise-title">Your privacy</h2>
-        <p className="rise-body-lg" style={{ margin: 0 }}>Your camera video and body photos never leave this phone. Rise saves your counts and measurements, and your care team can see them.</p>
+        <p className="rise-body-lg" style={{ margin: 0 }}>Your camera video and body photos never leave this phone. Myovia saves your counts and measurements, and your care team can see them.</p>
         {p && <p className="rise-caption" style={{ margin: 0 }}>Care team code: <span className="rise-num">{p.providerCode}</span></p>}
       </section>
       <section className="rise-card stack">
         <h2 className="rise-title">This phone</h2>
         <button className="rise-btn rise-btn--secondary rise-btn--block" onClick={() => { session.clear(); nav('/', { replace: true }); }}>Unlink this phone</button>
-        <p className="rise-caption" style={{ margin: 0 }}>Your checks stay saved. To use Rise again here, ask your care team for a link code.</p>
+        <p className="rise-caption" style={{ margin: 0 }}>Your checks stay saved. To use Myovia again here, ask your care team for a link code.</p>
         {!confirming ? (
           <button className="rise-btn rise-btn--quiet danger" onClick={() => setConfirming(true)}>Delete my data</button>
         ) : (

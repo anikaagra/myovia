@@ -107,7 +107,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
       if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play().catch(() => undefined); }
       say('Prop your phone at waist height and step back until your whole body is in view. Face the phone with your arms a little away from your sides.', { force: true });
     } catch {
-      setErr('Rise needs your camera for the scan. Allow camera access, or upload two photos instead.');
+      setErr('Myovia needs your camera for the scan. Allow camera access, or upload two photos instead.');
       setPhase('intro');
     }
   }
@@ -168,7 +168,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
         <dt>Weight</dt><dd className="rise-num">{result.weightLb} lb</dd>
       </dl>
       {(SIMULATE_CAMERA || simulate) && <p className="note">Demo: these are example measurements. In the app they come from your front and side photos.</p>}
-      <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline. A phone scan can be a few points off a DEXA scan, so Rise compares it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
+      <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline. A phone scan can be a few points off a DEXA scan, so Myovia compares it only with your own past Myovia scans. Your photos stayed on this phone and have been deleted.</p>
       <p className="rise-caption" style={{ margin: 0 }}>Measured from {result.photosUsed} photo{result.photosUsed === 1 ? '' : 's'} and checked against what's typical for your age, height and weight. Your trend over several scans is more reliable than any one scan.</p>
       {result.estimate.warning ? <>
         <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => { setResult(null); setPhase('intro'); }}>Scan again</button>
@@ -219,7 +219,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <p className="rise-body-lg">You'll take two photos, front and side. Rise measures your neck, waist and hips from your outline and estimates your body fat and lean mass.</p>
+      <p className="rise-body-lg">You'll take two photos, front and side. Myovia measures your neck, waist and hips from your outline and estimates your body fat and lean mass.</p>
       <ul className="stack" style={{ margin: 0, paddingLeft: 24 }}>
         <li>Wear fitted clothes, like leggings and a fitted top.</li>
         <li>Stand 6 to 8 feet away, against a plain wall, in good light.</li>

@@ -63,7 +63,7 @@ const STEPS: Step[] = [
     render: (a, s) => (
       <div className="stack">
         <div className="field"><label className="rise-label" htmlFor="providerCode">Care team code</label><input id="providerCode" className="rise-num" autoCapitalize="characters" value={a.providerCode ?? ''} onChange={(e) => s('providerCode', e.target.value.toUpperCase())} /></div>
-        <p className="note">Trying Rise out? Use the demo code <b className="rise-num">DEMO42</b>.</p>
+        <p className="note">Trying Myovia out? Use the demo code <b className="rise-num">DEMO42</b>.</p>
       </div>) },
 ];
 

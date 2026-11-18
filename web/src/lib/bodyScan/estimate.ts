@@ -1,4 +1,4 @@
-// Keeps a phone-scan estimate realistic. A single photo-based estimate can be several points off, so Rise:
+// Keeps a phone-scan estimate realistic. A single photo-based estimate can be several points off, so Myovia:
 // 1. measures a burst of photos and takes the median (done in BodyScanCapture),
 // 2. blends it with CUN-BAE, a validated formula from age, sex and BMI (Gómez-Ambrosi et al., Diabetes Care 2012),
 //    which keeps a bad photo from producing an impossible number,

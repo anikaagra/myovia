@@ -42,7 +42,7 @@ export function ProviderBar({ me, clinicName, current }: { me: StaffSession | nu
   return (
     <nav className="prov-bar" aria-label="Care team">
       <div className="prov-bar__who">
-        <span className="prov-bar__clinic">{me?.clinic.name ?? clinicName ?? 'Rise care team'}</span>
+        <span className="prov-bar__clinic">{me?.clinic.name ?? clinicName ?? 'Myovia care team'}</span>
         {me && <span className="rise-caption">Signed in as {me.staff.name}{me.staff.role === 'admin' ? ' · admin' : ''}</span>}
       </div>
       <div className="prov-bar__links">
@@ -147,7 +147,7 @@ export function ProviderList() {
       </section>
 
       {d.patients.length === 0 && (
-        <p className="note">No patients yet. Give patients the code <b className="rise-num">{d.code}</b>; they enter it when they set up Rise on their phone.</p>
+        <p className="note">No patients yet. Give patients the code <b className="rise-num">{d.code}</b>; they enter it when they set up Myovia on their phone.</p>
       )}
       <p className="rise-caption" style={{ margin: 0 }}>Needs review: the latest check is Watch or Check in and no one has marked it reviewed, logged a call or logged a referral since. Within each group, sorted by urgency, then risk tier. Each result combines the 30-second chair stand (vs. CDC STEADI norms), lean share of weight lost (vs. the 20–40% seen in GLP-1 trials) and optional grip (vs. EWGSOP2 cut-offs). "Low" means below the STEADI norm for age and sex.</p>
     </Screen>

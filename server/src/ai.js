@@ -1,4 +1,4 @@
-// AI features, powered by Claude. Every feature has a non-AI fallback, so Rise works with no API key.
+// AI features, powered by Claude. Every feature has a non-AI fallback, so Myovia works with no API key.
 // Safety design:
 //  - The rules engine (rules.js) decides Steady / Watch / Check in. The model never decides a state.
 //  - Numbers (stands, protein grams, dates) come from code. The model only writes words around them,
@@ -92,7 +92,7 @@ export function createAi(db, { getKey, clientFor = (apiKey) => new Anthropic({ a
         const patientMessage = unsafeText(input.patientMessage) ? '' : input.patientMessage;
         // The state line is written by code and leads the summary, so the note can't misstate the result.
         const last = p.checks[p.checks.length - 1];
-        const stateLine = `Rise state ${last.createdAt.slice(0, 10)}: ${{ steady: 'Steady', watch: 'Watch', checkin: 'Check in' }[last.state]}${last.flagged ? ' (rough-day check)' : ''}.`;
+        const stateLine = `Myovia state ${last.createdAt.slice(0, 10)}: ${{ steady: 'Steady', watch: 'Watch', checkin: 'Check in' }[last.state]}${last.flagged ? ' (rough-day check)' : ''}.`;
         if (contradictsState(input.summary, last.state, true) && last.state !== 'steady') {
           const e = new Error('AI note contradicted the result'); e.status = 502; e.code = 'ai_unsafe'; throw e;
         }

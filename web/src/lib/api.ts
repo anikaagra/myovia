@@ -14,7 +14,7 @@ async function req<T>(path: string, init: RequestInit & { token?: string | null 
   try {
     res = await fetch(path, { ...rest, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(rest.headers ?? {}) } });
   } catch {
-    throw new ApiError("We couldn't reach Rise. Check your internet connection and try again.", 0);
+    throw new ApiError("We couldn't reach Myovia. Check your internet connection and try again.", 0);
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));

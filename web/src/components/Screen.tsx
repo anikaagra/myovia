@@ -4,9 +4,9 @@ export function Screen({ children, footer, wide = false, back }: { children: Rea
   return (
     <div className={`screen${wide ? ' screen--wide' : ''}`}>
       <header className="topbar">
-        <Link to="/" className="brand" aria-label="Rise home">
+        <Link to="/" className="brand" aria-label="Myovia home">
           <svg viewBox="0 0 32 32" aria-hidden="true" width="28" height="28"><rect width="32" height="32" rx="8" className="brand__tile" /><path d="M8 25 A6 6 0 0 1 14 19 M8 25 A11 11 0 0 1 19 14 M8 25 A16 16 0 0 1 24 9" className="brand__arc" /></svg>
-          <span>Rise</span>
+          <span>Myovia</span>
         </Link>
         {back && <Link to={back.to} className="rise-btn rise-btn--quiet">{back.label}</Link>}
       </header>

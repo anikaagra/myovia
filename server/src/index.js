@@ -23,4 +23,4 @@ if (fs.existsSync(dist)) {
 }
 
 const port = Number(process.env.PORT ?? 3001);
-app.listen(port, () => console.log(`Rise server on http://localhost:${port}`));
+app.listen(port, () => console.log(`Myovia server on http://localhost:${port}`));

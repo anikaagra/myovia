@@ -15,7 +15,7 @@ const ACTION: Record<string, string> = {
   'staff.add': 'Added a team member',
   'patient.enroll': 'Joined the clinic',
   'patient.link': 'Linked a new phone',
-  'patient.delete': 'Deleted their Rise data',
+  'patient.delete': 'Deleted their Myovia data',
   'patient.view': 'Opened the patient record',
   'patient.export': 'Exported the record',
   'followup.reviewed': 'Marked reviewed',
@@ -129,7 +129,7 @@ export function ProviderSettings() {
             <dt>Key</dt>
             <dd>
               {ai.aiKeySource === 'clinic' ? <>Your clinic’s Anthropic key{ai.aiKeyHint ? <> ending <span className="rise-num">{ai.aiKeyHint}</span></> : ''}</>
-                : ai.aiKeySource === 'server' ? 'The Rise server’s key (set by whoever runs Rise)'
+                : ai.aiKeySource === 'server' ? 'The Myovia server’s key (set by whoever runs Myovia)'
                 : 'No key set'}
             </dd>
           </dl>
@@ -140,7 +140,7 @@ export function ProviderSettings() {
               <label className="rise-label" htmlFor="ai-key">{ai.aiKeySource === 'clinic' ? 'Replace Anthropic API key' : 'Anthropic API key'}</label>
               <input id="ai-key" name="ai-key" type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                 className="rise-num" placeholder="sk-ant-…" value={key} onChange={(e) => { setKey(e.target.value); setAiErr(null); setAiDone(null); }} />
-              <span className="rise-caption">Stored on the Rise server for your clinic only. Only the last 4 characters are shown again.</span>
+              <span className="rise-caption">Stored on the Myovia server for your clinic only. Only the last 4 characters are shown again.</span>
             </div>
             <div className="row">
               <button type="submit" className="rise-btn rise-btn--primary" disabled={aiBusy || !key.trim()}>{aiBusy ? 'Saving…' : 'Save key'}</button>

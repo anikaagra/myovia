@@ -53,7 +53,7 @@ export function ProviderLogin() {
       <div className="stack">
         <div className="rise-label">For care teams</div>
         <h1 className="display">{creating ? 'Create a clinic account' : 'Sign in to your check-in list'}</h1>
-        {creating && <p className="muted" style={{ margin: 0 }}>You become the clinic admin. Rise gives you a clinic code to share with patients, and you can add nurses later.</p>}
+        {creating && <p className="muted" style={{ margin: 0 }}>You become the clinic admin. Myovia gives you a clinic code to share with patients, and you can add nurses later.</p>}
       </div>
 
       <form className="stack" onSubmit={submit} method="post">
@@ -91,7 +91,7 @@ export function ProviderLogin() {
       )}
 
       <div className="row">
-        <span className="muted">{creating ? 'Already have an account?' : 'New to Rise?'}</span>
+        <span className="muted">{creating ? 'Already have an account?' : 'New to Myovia?'}</span>
         <button type="button" className="rise-btn rise-btn--quiet" onClick={() => switchMode(creating ? 'signin' : 'create')}>
           {creating ? 'Sign in instead' : 'Create a clinic account'}
         </button>

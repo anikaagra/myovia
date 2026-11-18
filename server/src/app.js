@@ -134,7 +134,7 @@ export function createApp(db, opts = {}) {
     const t = bearer(req);
     const row = t && q.token.get(hashToken(t));
     if (!row || row.kind !== kind || (row.expires_at && row.expires_at < now())) {
-      return next(new HttpError(401, kind === 'staff' ? 'Please sign in again.' : 'This phone is no longer linked to Rise. Ask your care team for a new link code.'));
+      return next(new HttpError(401, kind === 'staff' ? 'Please sign in again.' : 'This phone is no longer linked to Myovia. Ask your care team for a new link code.'));
     }
     q.touchToken.run(now(), kind === 'patient' ? new Date(Date.now() + PATIENT_TOKEN_DAYS * 864e5).toISOString() : null, row.token_hash);
     req.tokenHash = row.token_hash;

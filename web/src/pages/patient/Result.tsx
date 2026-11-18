@@ -58,7 +58,7 @@ export function Result() {
           <p className="rise-body-lg" style={{ margin: 0 }}>{coach.summary}</p>
           <p className="rise-body-lg" style={{ margin: 0 }}>{coach.why}</p>
           {!!coach.tips?.length && <ul className="stack" style={{ margin: 0, paddingLeft: 22 }}>{coach.tips.map((t) => <li key={t}>{t}</li>)}</ul>}
-          <p className="rise-caption" style={{ margin: 0 }}>Written with AI from your results. Your result itself comes from Rise's rules, which your care team can see.</p>
+          <p className="rise-caption" style={{ margin: 0 }}>Written with AI from your results. Your result itself comes from Myovia's rules, which your care team can see.</p>
         </section>
       ) : coachLoading ? <p className="rise-caption coach-loading" aria-live="polite">Writing a personal note on your result…</p> : null}
       {c.domains && <DomainSummary domains={c.domains} />}
@@ -78,7 +78,7 @@ export function Result() {
           </dl>
         </details>
       )}
-      <p className="rise-caption" style={{ margin: 0 }}>Rise tracks changes in strength and muscle. It doesn't diagnose. Talk to your care team about any concerns.</p>
+      <p className="rise-caption" style={{ margin: 0 }}>Myovia tracks changes in strength and muscle. It doesn't diagnose. Talk to your care team about any concerns.</p>
     </Screen>
   );
 }

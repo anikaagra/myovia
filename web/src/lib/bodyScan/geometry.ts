@@ -4,7 +4,7 @@
 // outline. Known height sets the scale. Width (front) and depth (side) at the neck, waist and hips are treated as
 // the two axes of an ellipse to estimate each circumference (Ramanujan's approximation). Body fat is then
 // estimated with the U.S. Navy circumference equations (Hodgdon & Beckett, 1984). This is an estimate: expect
-// a few percentage points of error against DEXA, so Rise only compares a patient's scans with their own earlier
+// a few percentage points of error against DEXA, so Myovia only compares a patient's scans with their own earlier
 // scans from the same method.
 
 export type Mask = { data: ArrayLike<number>; width: number; height: number };

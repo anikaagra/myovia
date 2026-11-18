@@ -21,7 +21,7 @@ const FORM: Record<FormKind, { title: string; label: string; placeholder: string
   contacted: { title: 'Log a call', label: 'What you discussed (optional)', placeholder: 'For example: Talked through protein targets. Will add two strength sessions a week.', required: false, save: 'Log call' },
   referred: { title: 'Referred', label: 'Referred to (optional)', placeholder: 'For example: Dietitian, physical therapy', required: false, save: 'Log referral' },
   note: { title: 'Add note', label: 'Note for the care team', placeholder: 'Only the care team sees this.', required: true, save: 'Save note' },
-  message: { title: 'Message patient', label: 'Message', placeholder: 'Write in plain words. The patient reads this in Rise.', required: true, save: 'Send message' },
+  message: { title: 'Message patient', label: 'Message', placeholder: 'Write in plain words. The patient reads this in Myovia.', required: true, save: 'Send message' },
 };
 
 const fullTime = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -40,7 +40,7 @@ async function copyText(text: string) {
 }
 
 const noteText = (n: Note, who: string) => [
-  `Rise muscle check note: ${who}${n.ai ? ' (AI draft; review before use)' : ''}`,
+  `Myovia muscle check note: ${who}${n.ai ? ' (AI draft; review before use)' : ''}`,
   '', 'Summary', n.summary, '', 'Measures', n.measures, '', 'Assessment', n.assessment, '', 'Suggested plan', n.plan,
   '', 'Suggested message to patient', n.patientMessage,
 ].join('\n');
@@ -110,7 +110,7 @@ export function ProviderPatient() {
       const list = await api.followUp(id, kind, trimmed || undefined, last?.id);
       setFollowUps(list);
       setForm(null); setText('');
-      setFuDone(kind === 'message' ? 'Message sent. The patient sees it in their Rise app.' : `${KIND_LABEL[kind]}: saved.`);
+      setFuDone(kind === 'message' ? 'Message sent. The patient sees it in their Myovia app.' : `${KIND_LABEL[kind]}: saved.`);
     } catch (e) { fail(e, setFuErr); }
     setFuBusy(false);
   }
@@ -201,7 +201,7 @@ export function ProviderPatient() {
                   <label className="rise-label" htmlFor="fu-text">{f.label}</label>
                   <textarea id="fu-text" ref={formRef} className="prov-textarea" rows={form === 'message' ? 5 : 3} maxLength={1000}
                     placeholder={f.placeholder} required={f.required} value={text} onChange={(e) => { setText(e.target.value); setFuErr(null); }} />
-                  {form === 'message' && <span className="rise-caption">The patient sees this message in their Rise app the next time they open it. Rise does not send a text or email.</span>}
+                  {form === 'message' && <span className="rise-caption">The patient sees this message in their Myovia app the next time they open it. Myovia does not send a text or email.</span>}
                 </div>
                 <div className="row">
                   <button type="submit" className="rise-btn rise-btn--primary" disabled={fuBusy}>{fuBusy ? 'Saving…' : f.save}</button>
@@ -297,7 +297,7 @@ export function ProviderPatient() {
                 </div>
                 <p className="rise-caption" style={{ margin: 0 }}>
                   {m.leanShare != null ? `${m.leanLost} lb lean of ${m.weightLost} lb lost since ${fmtDate(m.baselineDate!)}. ` : 'Not enough weight change since the first scan on this device to judge yet (needs 4 lb and 2%). '}
-                  {last.bodyCompDetail?.source === 'rise-scan' ? `Rise phone scan: circumference estimate (neck ${last.bodyCompDetail.neckIn}, waist ${last.bodyCompDetail.waistIn}, hip ${last.bodyCompDetail.hipIn} in; U.S. Navy equation). ` : ''}
+                  {last.bodyCompDetail?.source === 'rise-scan' ? `Myovia phone scan: circumference estimate (neck ${last.bodyCompDetail.neckIn}, waist ${last.bodyCompDetail.waistIn}, hip ${last.bodyCompDetail.hipIn} in; U.S. Navy equation). ` : ''}
                   {last.bodyCompDetail?.source === 'import' ? `Imported${last.bodyCompDetail.from ? ` from ${last.bodyCompDetail.from}` : ''}${last.bodyCompDetail.measuredOn ? `, measured ${last.bodyCompDetail.measuredOn}` : ''}. ` : ''}
                   GLP-1 trials report lean mass at about 20–40% of weight lost (Dubin et al., 2024); Watch at 40%, Check in at 60% (draft). Only scans from the same device are compared. Lean mass includes water and organs, not just muscle.
                   {m.lowMuscle ? ' Appendicular muscle index is below the EWGSOP2 cut-off.' : ''}
@@ -377,7 +377,7 @@ export function ProviderPatient() {
               <>
                 <div className="prov-linkcode rise-num" aria-label={`Link code ${link.code.split('').join(' ')}`}>{link.code.slice(0, 3)} {link.code.slice(3)}</div>
                 <p className="rise-caption" style={{ margin: 0 }}>Expires at {new Date(link.expiresAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}. Works once.</p>
-                <p className="note">On the new phone, open Rise and choose ‘I already use Rise’. Then enter this code.</p>
+                <p className="note">On the new phone, open Myovia and choose ‘I already use Myovia’. Then enter this code.</p>
               </>
             ) : (
               <p className="rise-caption" style={{ margin: 0 }}>For a patient with a new or reset phone. Their history stays with them.</p>
