@@ -1,0 +1,3 @@
+var R={};const E=e=>e.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");function A({due:e,everyDays:c,uid:t,base:n=R.RISE_PUBLIC_URL||""}){const I=new Date(`${e}T17:00:00Z`),D=new Date(I.getTime()+15*6e4);return["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Myovia//Muscle check//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH","BEGIN:VEVENT",`UID:${t}`,`DTSTAMP:${E(new Date)}`,`DTSTART:${E(I)}`,`DTEND:${E(D)}`,`RRULE:FREQ=DAILY;INTERVAL=${c};COUNT=12`,"SUMMARY:Myovia muscle check",`DESCRIPTION:Your muscle check is due. It takes about 3 minutes.${n?`\\n${n}`:""}`,"BEGIN:VALARM","TRIGGER:PT0M","ACTION:DISPLAY","DESCRIPTION:Your Myovia muscle check is due","END:VALARM","END:VEVENT","END:VCALENDAR"].join(`\r
+`)+`\r
+`}export{A as reminderIcs};
