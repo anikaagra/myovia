@@ -45,7 +45,7 @@ function seed(): Store {
     s.patients.push({ ...base, id, providerCode: CLINIC.code, tier, tierReasons: reasons, createdAt: DEMO_DATES[0] });
     const hist: Row[] = [];
     (checks as [number, number, number, number | null][]).forEach(([stands, weightLb, leanMassLb, gripKg], i) => {
-      const c = { stands, weightLb, leanMassLb, gripKg, bodyCompMethod: 'smart-scale', confidence: 0.92, createdAt: DEMO_DATES[i], method: 'phone-video' };
+      const c = { stands, weightLb, leanMassLb, bodyFatPct: Math.round((1 - leanMassLb / weightLb) * 1000) / 10, gripKg, bodyCompMethod: firstName === 'Linda' ? 'rise-scan' : 'smart-scale', confidence: 0.92, createdAt: DEMO_DATES[i], method: 'phone-video' };
       const row = toRow(s.nextId++, id, c, evaluateCheck({ ...base, tier }, hist, c));
       s.checks.push(row); hist.push(row);
     });

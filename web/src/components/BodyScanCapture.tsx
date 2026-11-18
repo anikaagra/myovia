@@ -4,12 +4,13 @@ import { analyzePhoto, fileToCanvas } from '../lib/bodyScan/segment';
 import { say, stopSpeaking, unlockSpeech } from '../lib/speech';
 import { useScanChecks } from '../lib/useLiveChecks';
 import { requestMotionAccess } from '../lib/deviceSensors';
-import { SIMULATE_CAMERA } from '../lib/api';
+import { IS_DEMO, SIMULATE_CAMERA } from '../lib/api';
+import { DemoScan } from './DemoScan';
 import { navyBodyFat } from '../lib/bodyScan/geometry';
 import { combineEstimate, median, type Estimate } from '../lib/bodyScan/estimate';
 
 export type PhoneScan = ScanMeasurements & { weightLb: number; leanMassLb: number; estimate: Estimate; photosUsed: number };
-type Phase = 'intro' | 'camera' | 'upload' | 'working' | 'result';
+type Phase = 'demo' | 'intro' | 'camera' | 'upload' | 'working' | 'result';
 type Shot = 'front' | 'side';
 
 const TIMER_S = 10;
@@ -30,6 +31,8 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
   const streamRef = useRef<MediaStream | null>(null);
   const timers = useRef<number[]>([]);
   const [armed, setArmed] = useState<Shot | null>(null);
+  // Demo builds can simulate the scan, so it can be shown on stage without taking photos.
+  const [simulate, setSimulate] = useState(IS_DEMO);
   const live = useScanChecks(videoRef, phase === 'camera', shot);
 
   const stopCamera = () => { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; };
@@ -89,14 +92,14 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
     const neckIn = (sex === 'male' ? 14.2 : 12.4) + (bmi - 25) * 0.14;
     const waistIn = h * (0.42 + (bmi - 22) * 0.0125), hipIn = h * (sex === 'male' ? 0.56 : 0.6) + (bmi - 25) * 0.5;
     const r1 = (n: number) => Math.round(n * 10) / 10;
-    const bodyFatPct = r1(navyBodyFat(sex, h, neckIn, waistIn, hipIn) ?? 35);
-    setPhase('working');
-    setTimeout(() => finish({ neckIn: r1(neckIn), waistIn: r1(waistIn), hipIn: r1(hipIn), bodyFatPct }, 6), 1400);
+    // A returning patient's simulated photo reading sits close to their last scan, as a real one would.
+    const bodyFatPct = previous ? r1(previous.bodyFatPct + 0.4) : r1(navyBodyFat(sex, h, neckIn, waistIn, hipIn) ?? 35);
+    finish({ neckIn: r1(neckIn), waistIn: r1(waistIn), hipIn: r1(hipIn), bodyFatPct }, 6);
   }
 
   async function startCamera() {
     const e = ready(); if (e) return setErr(e);
-    if (SIMULATE_CAMERA) return demoScan();
+    if (SIMULATE_CAMERA || simulate) { setErr(null); setPhase('demo'); return; }
     setErr(null); setShot('front'); photos.current = {}; setPhase('camera');
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
@@ -164,7 +167,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
         <dt>Hips</dt><dd className="rise-num">{result.hipIn} in</dd>
         <dt>Weight</dt><dd className="rise-num">{result.weightLb} lb</dd>
       </dl>
-      {SIMULATE_CAMERA && <p className="note">Demo: these are example measurements. In the app they come from your front and side photos.</p>}
+      {(SIMULATE_CAMERA || simulate) && <p className="note">Demo: these are example measurements. In the app they come from your front and side photos.</p>}
       <p className="rise-caption" style={{ margin: 0 }}>Estimated from your body's outline. A phone scan can be a few points off a DEXA scan, so Rise compares it only with your own past Rise scans. Your photos stayed on this phone and have been deleted.</p>
       <p className="rise-caption" style={{ margin: 0 }}>Measured from {result.photosUsed} photo{result.photosUsed === 1 ? '' : 's'} and checked against what's typical for your age, height and weight. Your trend over several scans is more reliable than any one scan.</p>
       {result.estimate.warning ? <>
@@ -177,6 +180,7 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
     </div>
   );
 
+  if (phase === 'demo') return <DemoScan onFinish={demoScan} onCancel={() => setPhase('intro')} />;
   if (phase === 'working') return <p className="rise-body-lg" aria-live="polite">Measuring your scan… This takes a few seconds.</p>;
 
   if (phase === 'camera') return (
@@ -225,6 +229,12 @@ export function BodyScanCapture({ sex, age, heightIn, weightLb, previous, onWeig
         <div className="field"><label className="rise-label" htmlFor="scan-weight">Today's weight (lb)</label><input id="scan-weight" className="rise-num" inputMode="decimal" value={weightLb} onChange={(e) => { setErr(null); onWeight(e.target.value); }} /></div>
         <div className="field"><label className="rise-label" htmlFor="scan-height">Height (in)</label><input id="scan-height" className="rise-num" inputMode="numeric" value={height} onChange={(e) => { setErr(null); setHeight(e.target.value.replace(/\D/g, '')); }} /></div>
       </div>
+      {IS_DEMO && !SIMULATE_CAMERA && (
+        <div className="rise-choices" role="radiogroup" aria-label="Demo camera">
+          <label className="rise-choice"><input type="radio" name="scanmode" id="scan-sim" checked={simulate} onChange={() => setSimulate(true)} /> Simulate the scan</label>
+          <label className="rise-choice"><input type="radio" name="scanmode" id="scan-real" checked={!simulate} onChange={() => setSimulate(false)} /> Use my real camera</label>
+        </div>
+      )}
       {err && <p role="alert" className="error-note">{err}</p>}
       <button className="rise-btn rise-btn--primary rise-btn--block" onClick={() => { unlockSpeech(); void requestMotionAccess(); void startCamera(); }}>Start the scan</button>
       <button className="rise-btn rise-btn--secondary rise-btn--block" onClick={() => { const e = ready(); if (e) return setErr(e); setErr(null); photos.current = {}; setPhase('upload'); }}>Upload two photos instead</button>

@@ -27,7 +27,7 @@ export function seed(db) {
     ins.run(id, 'DEMO42', firstName, age, sex, menopause, medication, dose, startDate, sw, cw, activity, falls, jointPain, goal, heightIn, tier, JSON.stringify(reasons), DEMO_DATES[0]);
     const history = [];
     checks.forEach(([stands, weightLb, leanMassLb, gripKg], i) => {
-      const c = { stands, weightLb, leanMassLb, gripKg, bodyCompMethod: 'smart-scale', confidence: 0.92, createdAt: DEMO_DATES[i], method: 'phone-video' };
+      const c = { stands, weightLb, leanMassLb, bodyFatPct: Math.round((1 - leanMassLb / weightLb) * 1000) / 10, gripKg, bodyCompMethod: firstName === 'Linda' ? 'rise-scan' : 'smart-scale', confidence: 0.92, createdAt: DEMO_DATES[i], method: 'phone-video' };
       const r = evaluateCheck({ ...p, tier }, history, c);
       insertCheck(db, id, c, r);
       history.push({ ...c, ...r });

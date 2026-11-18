@@ -45,3 +45,10 @@
 .cam__badge--quiet { opacity: .75; }
 .demo-settings summary { cursor: pointer; }
 .demo-settings .field { margin-top: var(--space-2); }
+.scan-guide { stroke: var(--paper-raised); stroke-width: 3; stroke-dasharray: 8 8; }
+.scan-fig circle, .scan-fig path { fill: var(--brand); }
+.scan-measure line { stroke: var(--trace); stroke-width: 3; stroke-dasharray: 6 4; }
+.scan-measure text { fill: var(--ink); font: 700 13px var(--font-sans); }
+.scan-flash { animation: scanflash .5s ease-out forwards; }
+@keyframes scanflash { from { opacity: .9; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .scan-flash { animation: none; opacity: 0; } }

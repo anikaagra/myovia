@@ -87,6 +87,10 @@ export function CheckFlow() {
   useEffect(() => {
     api.me().then((p) => {
       setPatient(p);
+      // Demo: start with a plausible weight for today (a little under the last reading) so the scan runs in one tap.
+      if (IS_DEMO && p.currentWeightLb) setWeight(String(Math.round(p.currentWeightLb - 3)));
+      const lastGrip = [...p.checks].reverse().find((c) => c.gripKg != null)?.gripKg;
+      if (IS_DEMO && lastGrip) setGrip(String(Math.round(lastGrip - 0.5)));
       const lastScan = [...p.checks].reverse().find((c) => c.bodyCompMethod);
       if (lastScan?.bodyCompMethod) setMethod(lastScan.bodyCompMethod);
       if (p.checks.some((c) => c.gripKg != null)) setHasGrip(true);
